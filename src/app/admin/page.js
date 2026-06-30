@@ -51,7 +51,7 @@ export default function AdminDashboard() {
 
   const [editTaskModalOpen, setEditTaskModalOpen] = useState(false);
   const [selectedTaskForEdit, setSelectedTaskForEdit] = useState(null);
-  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', points: 10 });
+  const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', category: 'Strategy and Growth', points: 10, assigned_to: '' });
   
   const [showCreateUserPassword, setShowCreateUserPassword] = useState(false);
 
@@ -87,7 +87,7 @@ export default function AdminDashboard() {
   // Task Filters
   const filteredTasks = tasks.filter(task => {
     const matchStatus = taskFilter === 'all' || task.status === taskFilter;
-    const matchUser = taskUserFilter === 'all' || (task.assigned_to && task.assigned_to.toString() === taskUserFilter);
+    const matchUser = taskUserFilter === 'all' || (task.assigned_user_id && task.assigned_user_id.toString() === taskUserFilter);
     const matchCategory = taskCategoryFilter === 'all' || task.category === taskCategoryFilter;
     return matchStatus && matchUser && matchCategory;
   });
@@ -103,11 +103,12 @@ export default function AdminDashboard() {
 
   // Available Users for Assignment
   const availableUsersForTask = users.filter(u => u.availability === 'available' && u.category === createTaskForm.category);
+  const availableUsersForEditTask = users.filter(u => u.availability === 'available' && u.category === editTaskForm.category);
 
   // Task Actions
   const handleCreateTask = async (e) => {
     e.preventDefault();
-    const res = await createTask(createTaskForm.title, createTaskForm.description, createTaskForm.category, createTaskForm.assigned_to);
+    const res = await createTask(createTaskForm.title, createTaskForm.description, createTaskForm.category, createTaskForm.points, createTaskForm.assigned_to);
     if (res.error) toast.error(res.error);
     else {
       toast.success('Task created successfully!');
@@ -119,7 +120,14 @@ export default function AdminDashboard() {
 
   const handleEditTask = async (e) => {
     e.preventDefault();
-    const res = await updateTask(selectedTaskForEdit.id, editTaskForm.title, editTaskForm.description, editTaskForm.points);
+    const res = await updateTask(
+      selectedTaskForEdit.id, 
+      editTaskForm.title, 
+      editTaskForm.description, 
+      editTaskForm.category, 
+      editTaskForm.points, 
+      editTaskForm.assigned_to
+    );
     if (res.error) toast.error(res.error);
     else {
       toast.success('Task updated successfully!');
@@ -384,12 +392,12 @@ export default function AdminDashboard() {
                               </td>
                               <td className="p-4 font-medium text-slate-600">{task.category}</td>
                               <td className="p-4">
-                                {task.assigned_to ? (
+                                {task.assigned_user_id ? (
                                   <div className="flex items-center gap-2 font-semibold text-slate-700">
                                     <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs border border-indigo-200">
-                                      {task.assigned_username?.charAt(0).toUpperCase()}
+                                      {task.assignedUserName?.charAt(0).toUpperCase()}
                                     </div>
-                                    {task.assigned_username}
+                                    {task.assignedUserName}
                                   </div>
                                 ) : <span className="text-slate-400 italic font-medium">Unassigned</span>}
                               </td>
@@ -402,7 +410,17 @@ export default function AdminDashboard() {
                                 <div className="flex flex-wrap gap-2">
                                   {['unassigned', 'assigned'].includes(task.status) && (
                                     <button 
-                                      onClick={() => { setSelectedTaskForEdit(task); setEditTaskForm({ title: task.title, description: task.description, points: task.points }); setEditTaskModalOpen(true); }}
+                                      onClick={() => { 
+                                        setSelectedTaskForEdit(task); 
+                                        setEditTaskForm({ 
+                                          title: task.title, 
+                                          description: task.description, 
+                                          category: task.category || 'Strategy and Growth',
+                                          points: task.points, 
+                                          assigned_to: task.assigned_user_id || '' 
+                                        }); 
+                                        setEditTaskModalOpen(true); 
+                                      }}
                                       className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-200"
                                     ><Edit className="w-3.5 h-3.5"/> Edit</button>
                                   )}
@@ -471,7 +489,7 @@ export default function AdminDashboard() {
                       <div>
                         <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Base Points</label>
                         <input 
-                          type="number" min="1" max="100" required value={createTaskForm.points} onChange={e => setCreateTaskForm({...createTaskForm, points: parseInt(e.target.value)})}
+                          type="number" min="1" max="100" required value={createTaskForm.points} onChange={e => setCreateTaskForm({...createTaskForm, points: e.target.value === '' ? '' : parseInt(e.target.value)})}
                           className="w-full p-3.5 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-800"
                         />
                       </div>
@@ -721,18 +739,57 @@ export default function AdminDashboard() {
           <DialogHeader>
             <DialogTitle className="text-xl font-bold tracking-tight text-slate-800">Edit Task Definition</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleEditTask} className="space-y-5 mt-4">
+          <form onSubmit={handleEditTask} className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Title</Label>
               <Input required value={editTaskForm.title} onChange={e => setEditTaskForm({...editTaskForm, title: e.target.value})} className="border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" />
             </div>
-            <div className="space-y-2">
-              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Base Points</Label>
-              <Input type="number" required min="1" value={editTaskForm.points} onChange={e => setEditTaskForm({...editTaskForm, points: parseInt(e.target.value)})} className="border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" />
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Category</Label>
+                <select 
+                  value={editTaskForm.category} 
+                  onChange={e => setEditTaskForm({...editTaskForm, category: e.target.value, assigned_to: ''})}
+                  className="w-full p-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 font-medium text-slate-800"
+                >
+                  <option value="Strategy and Growth">Strategy and Growth</option>
+                  <option value="Human Resource Management">Human Resource Management</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Content and Designing">Content and Designing</option>
+                  <option value="Technical">Technical</option>
+                  <option value="Expansion strategist">Expansion strategist</option>
+                  <option value="Fund raising poc">Fund raising poc</option>
+                  <option value="Legal compliance executive">Legal compliance executive</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Base Points</Label>
+                <Input type="number" required min="1" value={editTaskForm.points} onChange={e => setEditTaskForm({...editTaskForm, points: e.target.value === '' ? '' : parseInt(e.target.value)})} className="border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" />
+              </div>
             </div>
+
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Reallocate / Assign To</Label>
+              <select 
+                value={editTaskForm.assigned_to} 
+                onChange={e => setEditTaskForm({...editTaskForm, assigned_to: e.target.value})}
+                className="w-full p-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 font-medium text-slate-800"
+              >
+                <option value="">Leave Unassigned</option>
+                {/* Include current user if they are assigned but not available, to avoid weird selections */}
+                {selectedTaskForEdit?.assigned_user_id && !availableUsersForEditTask.find(u => u.id === selectedTaskForEdit.assigned_user_id) && (
+                   <option value={selectedTaskForEdit.assigned_user_id}>
+                     Current: {selectedTaskForEdit.assignedUserName}
+                   </option>
+                )}
+                {availableUsersForEditTask.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+              </select>
+            </div>
+
             <div className="space-y-2">
               <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Description</Label>
-              <textarea required className="w-full p-3 border-2 border-slate-200 rounded-xl min-h-[100px] outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] font-medium text-slate-800" value={editTaskForm.description} onChange={e => setEditTaskForm({...editTaskForm, description: e.target.value})}></textarea>
+              <textarea required className="w-full p-3 border-2 border-slate-200 rounded-xl min-h-[100px] outline-none focus:border-indigo-500 font-medium text-slate-800" value={editTaskForm.description} onChange={e => setEditTaskForm({...editTaskForm, description: e.target.value})}></textarea>
             </div>
             <DialogFooter>
               <button type="button" onClick={() => setEditTaskModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">Cancel</button>

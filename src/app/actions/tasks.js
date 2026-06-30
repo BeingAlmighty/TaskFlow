@@ -58,7 +58,7 @@ export async function getUserTasks(userId) {
   }
 }
 
-export async function createTask(title, description, category, assignedUserId) {
+export async function createTask(title, description, category, points, assignedUserId) {
   try {
     if (assignedUserId) {
       const userRes = await query('SELECT availability, category FROM users WHERE id = $1', [assignedUserId]);
@@ -74,7 +74,7 @@ export async function createTask(title, description, category, assignedUserId) {
     const result = await query(`
       INSERT INTO tasks (title, description, category, assigned_user_id, status, points, bonus_points) 
       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
-    `, [title, description, category, assignedUserId || null, status, null, 0]);
+    `, [title, description, category, assignedUserId || null, status, points || 0, 0]);
     
     return getTaskById(result.rows[0].id);
   } catch (error) {
@@ -83,7 +83,7 @@ export async function createTask(title, description, category, assignedUserId) {
   }
 }
 
-export async function updateTask(taskId, title, description, category, assignedUserId) {
+export async function updateTask(taskId, title, description, category, points, assignedUserId) {
   try {
     if (assignedUserId) {
       const userRes = await query('SELECT availability, category FROM users WHERE id = $1', [assignedUserId]);
@@ -98,9 +98,9 @@ export async function updateTask(taskId, title, description, category, assignedU
     
     const result = await query(`
       UPDATE tasks 
-      SET title = $1, description = $2, category = $3, assigned_user_id = $4, status = $5
-      WHERE id = $6 RETURNING id
-    `, [title, description, category, assignedUserId || null, status, taskId]);
+      SET title = $1, description = $2, category = $3, points = $4, assigned_user_id = $5, status = $6
+      WHERE id = $7 RETURNING id
+    `, [title, description, category, points || 0, assignedUserId || null, status, taskId]);
     
     if (result.rowCount === 0) return { error: 'Task not found' };
     return getTaskById(taskId);
