@@ -2,15 +2,31 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/app/actions/auth';
+import { login, changePasswordWithOld } from '@/app/actions/auth';
 import { toast } from 'sonner';
-import { ListTodo, Users, TrendingUp, Trophy, User, Lock, Loader2 } from 'lucide-react';
+import { ListTodo, Users, TrendingUp, Trophy, User, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const router = useRouter();
+
+  // Change Password Modal States
+  const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [cpUsername, setCpUsername] = useState('');
+  const [cpOldPassword, setCpOldPassword] = useState('');
+  const [cpNewPassword, setCpNewPassword] = useState('');
+  const [cpConfirmPassword, setCpConfirmPassword] = useState('');
+  
+  const [showCpOldPassword, setShowCpOldPassword] = useState(false);
+  const [showCpNewPassword, setShowCpNewPassword] = useState(false);
+  const [showCpConfirmPassword, setShowCpConfirmPassword] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -41,6 +57,51 @@ export default function LoginPage() {
     } catch (error) {
       toast.error('An unexpected error occurred');
       setIsLoading(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (cpNewPassword !== cpConfirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const result = await changePasswordWithOld(cpUsername, cpOldPassword, cpNewPassword);
+      if (result.error) {
+        toast.error(result.error);
+        setIsChangingPassword(false);
+        return;
+      }
+      
+      toast.success('Password changed successfully! You can now log in.');
+      setChangePasswordModalOpen(false);
+      setCpUsername('');
+      setCpOldPassword('');
+      setCpNewPassword('');
+      setCpConfirmPassword('');
+      setShowCpOldPassword(false);
+      setShowCpNewPassword(false);
+      setShowCpConfirmPassword(false);
+    } catch (error) {
+      toast.error('An unexpected error occurred');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleModalClose = (open) => {
+    setChangePasswordModalOpen(open);
+    if (!open) {
+      // Clear sensitive fields when modal closes
+      setCpOldPassword('');
+      setCpNewPassword('');
+      setCpConfirmPassword('');
+      setShowCpOldPassword(false);
+      setShowCpNewPassword(false);
+      setShowCpConfirmPassword(false);
     }
   };
 
@@ -123,15 +184,33 @@ export default function LoginPage() {
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 z-10 transition-colors group-focus-within:text-indigo-600" />
                     <input
-                      type="password"
+                      type={showLoginPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       disabled={isLoading}
                       placeholder="Enter your password"
-                      className="w-full py-4 pl-12 pr-4 border-2 border-slate-100 rounded-2xl text-base transition-all duration-300 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:shadow-[0_0_0_4px_rgba(79,70,229,0.1)] outline-none font-medium text-slate-800 placeholder:text-slate-400"
+                      className="w-full py-4 pl-12 pr-12 border-2 border-slate-100 rounded-2xl text-base transition-all duration-300 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:shadow-[0_0_0_4px_rgba(79,70,229,0.1)] outline-none font-medium text-slate-800 placeholder:text-slate-400"
                     />
+                    <button 
+                      type="button"
+                      tabIndex="-1"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition-colors focus:outline-none"
+                    >
+                      {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
                   </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button 
+                    type="button" 
+                    onClick={() => setChangePasswordModalOpen(true)}
+                    className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    Forgot / Change Password?
+                  </button>
                 </div>
 
                 <button 
@@ -156,6 +235,99 @@ export default function LoginPage() {
 
         </div>
       </div>
+
+      <Dialog open={changePasswordModalOpen} onOpenChange={handleModalClose}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold tracking-tight text-slate-800">Change Password</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleChangePasswordSubmit} className="space-y-5 mt-4">
+            <div className="space-y-2">
+              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Username</Label>
+              <Input 
+                required 
+                value={cpUsername} 
+                onChange={e => setCpUsername(e.target.value)} 
+                disabled={isChangingPassword}
+                className="py-6 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" 
+                placeholder="Enter your username"
+              />
+            </div>
+            
+            <div className="space-y-2 relative">
+              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Old Password</Label>
+              <div className="relative">
+                <Input 
+                  type={showCpOldPassword ? "text" : "password"} 
+                  required 
+                  value={cpOldPassword} 
+                  onChange={e => setCpOldPassword(e.target.value)} 
+                  disabled={isChangingPassword}
+                  className="py-6 pr-10 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" 
+                  placeholder="Enter current password"
+                />
+                <button type="button" tabIndex="-1" onClick={() => setShowCpOldPassword(!showCpOldPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                  {showCpOldPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 relative">
+              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">New Password</Label>
+              <div className="relative">
+                <Input 
+                  type={showCpNewPassword ? "text" : "password"} 
+                  required 
+                  value={cpNewPassword} 
+                  onChange={e => setCpNewPassword(e.target.value)} 
+                  disabled={isChangingPassword}
+                  className="py-6 pr-10 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" 
+                  placeholder="At least 8 characters"
+                />
+                <button type="button" tabIndex="-1" onClick={() => setShowCpNewPassword(!showCpNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                  {showCpNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 relative">
+              <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Confirm New Password</Label>
+              <div className="relative">
+                <Input 
+                  type={showCpConfirmPassword ? "text" : "password"} 
+                  required 
+                  value={cpConfirmPassword} 
+                  onChange={e => setCpConfirmPassword(e.target.value)} 
+                  disabled={isChangingPassword}
+                  className="py-6 pr-10 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" 
+                  placeholder="Type new password again"
+                />
+                <button type="button" tabIndex="-1" onClick={() => setShowCpConfirmPassword(!showCpConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600">
+                  {showCpConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-6">
+              <button 
+                type="button" 
+                disabled={isChangingPassword}
+                onClick={() => handleModalClose(false)} 
+                className="px-5 py-2.5 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                disabled={isChangingPassword}
+                className="px-5 py-2.5 text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all bg-indigo-600 hover:bg-indigo-700 disabled:opacity-80 flex items-center gap-2"
+              >
+                {isChangingPassword ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating...</> : 'Update Password'}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

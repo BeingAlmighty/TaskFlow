@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { 
   ClipboardList, PlusCircle, Users, Trophy, Shield, LogOut, 
-  Clock, CheckCircle2, AlertCircle, Eye, Key, Send, Edit, PlayCircle, Star, Sparkles
+  Clock, CheckCircle2, AlertCircle, Eye, EyeOff, Key, Send, Edit, PlayCircle, Star, Sparkles
 } from 'lucide-react';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -47,10 +47,13 @@ export default function AdminDashboard() {
   const [changePasswordModalOpen, setChangePasswordModalOpen] = useState(false);
   const [selectedUserForPassword, setSelectedUserForPassword] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [showAdminChangePassword, setShowAdminChangePassword] = useState(false);
 
   const [editTaskModalOpen, setEditTaskModalOpen] = useState(false);
   const [selectedTaskForEdit, setSelectedTaskForEdit] = useState(null);
   const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', points: 10 });
+  
+  const [showCreateUserPassword, setShowCreateUserPassword] = useState(false);
 
   useEffect(() => {
     const role = sessionStorage.getItem('role');
@@ -183,6 +186,7 @@ export default function AdminDashboard() {
       toast.success('Password changed successfully!');
       setChangePasswordModalOpen(false);
       setNewPassword('');
+      setShowAdminChangePassword(false);
     }
   };
 
@@ -524,7 +528,21 @@ export default function AdminDashboard() {
                   <h3 className="font-bold text-slate-700 mb-4 text-sm uppercase tracking-wider">Onboard New Member</h3>
                   <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <input type="text" placeholder="Username" required value={createUserForm.username} onChange={e => setCreateUserForm({...createUserForm, username: e.target.value})} className="p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"/>
-                    <input type="password" placeholder="Password" required value={createUserForm.password} onChange={e => setCreateUserForm({...createUserForm, password: e.target.value})} className="p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"/>
+                    
+                    <div className="relative">
+                      <input 
+                        type={showCreateUserPassword ? "text" : "password"} 
+                        placeholder="Password" 
+                        required 
+                        value={createUserForm.password} 
+                        onChange={e => setCreateUserForm({...createUserForm, password: e.target.value})} 
+                        className="w-full p-3 pr-10 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"
+                      />
+                      <button type="button" tabIndex="-1" onClick={() => setShowCreateUserPassword(!showCreateUserPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition-colors">
+                        {showCreateUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
                     <select value={createUserForm.category} onChange={e => setCreateUserForm({...createUserForm, category: e.target.value})} className="p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all">
                       <option value="Strategy and Growth">Strategy and Growth</option>
                       <option value="Human Resource Management">Human Resource Management</option>
@@ -666,15 +684,26 @@ export default function AdminDashboard() {
       </div>
 
       {/* Change Password Modal */}
-      <Dialog open={changePasswordModalOpen} onOpenChange={setChangePasswordModalOpen}>
+      <Dialog open={changePasswordModalOpen} onOpenChange={(open) => { setChangePasswordModalOpen(open); if(!open) setShowAdminChangePassword(false); }}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold tracking-tight text-slate-800">Update Credentials</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleChangePassword} className="space-y-6 mt-4">
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">New Password for {selectedUserForPassword?.username}</Label>
-              <Input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="py-6 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" />
+              <div className="relative">
+                <Input 
+                  type={showAdminChangePassword ? "text" : "password"} 
+                  required 
+                  value={newPassword} 
+                  onChange={e => setNewPassword(e.target.value)} 
+                  className="py-6 pr-10 border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium" 
+                />
+                <button type="button" tabIndex="-1" onClick={() => setShowAdminChangePassword(!showAdminChangePassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition-colors">
+                  {showAdminChangePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
             <DialogFooter>
               <button type="button" onClick={() => setChangePasswordModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">Cancel</button>

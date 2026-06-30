@@ -80,3 +80,54 @@ export async function getCurrentUser() {
     return null;
   }
 }
+
+export async function changePasswordWithOld(username, oldPassword, newPassword) {
+  try {
+    if (!username || !oldPassword || !newPassword) {
+      return { error: 'All fields are required' };
+    }
+    
+    if (newPassword.length < 8) {
+      return { error: 'New password must be at least 8 characters long' };
+    }
+
+    if (oldPassword === newPassword) {
+      return { error: 'New password must be different from the old password' };
+    }
+
+    const result = await query('SELECT * FROM users WHERE username = $1', [username]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return { error: 'User not found' };
+    }
+
+    // Verify old password
+    let isMatch = false;
+    if (user.password.startsWith('$2b$') || user.password.startsWith('$2a$') || user.password.startsWith('$2y$')) {
+      isMatch = await bcrypt.compare(oldPassword, user.password);
+    } else {
+      isMatch = oldPassword === user.password;
+    }
+
+    if (!isMatch) {
+      return { error: 'Incorrect old password' };
+    }
+
+    // Hash new password and update
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    const updateResult = await query(
+      'UPDATE users SET password = $1 WHERE id = $2 RETURNING id',
+      [hashedNewPassword, user.id]
+    );
+
+    if (updateResult.rowCount === 0) {
+      return { error: 'Failed to update password in database' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Change password error:', error);
+    return { error: 'Server error: ' + (error.message || 'Unknown error') };
+  }
+}
