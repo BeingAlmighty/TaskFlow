@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -81,6 +82,22 @@ export default function AdminDashboard() {
   const [taskUserFilter, setTaskUserFilter] = useState('all');
   const [taskCategoryFilter, setTaskCategoryFilter] = useState('all');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const searchRef = useRef(null);
+  const [dropdownRect, setDropdownRect] = useState(null);
+
+  useEffect(() => {
+    if (!globalSearchQuery) { setDropdownRect(null); return; }
+    const update = () => {
+      if (searchRef.current) {
+        const r = searchRef.current.getBoundingClientRect();
+        setDropdownRect({ top: r.bottom + 8, left: r.left, width: r.width });
+      }
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [globalSearchQuery]);
   
   const [userAvailabilityFilter, setUserAvailabilityFilter] = useState('all');
   const [userCategoryFilter, setUserCategoryFilter] = useState('all');
@@ -438,8 +455,8 @@ export default function AdminDashboard() {
         <div className="p-4 md:p-8 max-w-[1400px] mx-auto w-full relative z-10">
           
           {/* Top Header */}
-          <div className="flex flex-col mb-8 gap-5 bg-white/60 backdrop-blur-xl p-5 md:p-6 rounded-[24px] border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] items-center text-center">
-            <div className="flex flex-col items-center justify-center w-full">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-5 bg-white/60 backdrop-blur-xl p-5 md:p-6 rounded-[24px] border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] items-center text-center md:text-left">
+            <div className="flex flex-col items-center md:items-start justify-center">
               <h1 className="text-2xl md:text-[28px] font-black text-slate-800 tracking-tight leading-tight">
                 {activeTab === 'taskBench' ? 'Task Bench' : 
                  activeTab === 'userList' ? 'Team Directory' : 
@@ -455,13 +472,13 @@ export default function AdminDashboard() {
               </p>
             </div>
             
-            <div className="flex items-center justify-center w-full mt-2 md:mt-0">
-              {activeTab !== 'leaderboard' && (
-              <div className="relative w-full md:w-auto group flex justify-center">
+            <div className="flex items-center justify-center md:justify-end w-full md:w-auto mt-2 md:mt-0">
+              {(
+              <div ref={searchRef} className="relative w-full md:w-auto group flex justify-center md:justify-end">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-slate-400 group-focus-within:text-indigo-600 transition-colors z-10" />
                 <input 
                   type="text" 
-                  placeholder={activeTab === 'userList' ? 'Search users...' : 'Search tasks...'} 
+                  placeholder={activeTab === 'userList' ? 'Search users...' : activeTab === 'leaderboard' ? 'Search by username...' : 'Search tasks...'} 
                   value={globalSearchQuery}
                   onChange={(e) => setGlobalSearchQuery(e.target.value)}
                   className="pl-12 pr-14 py-3.5 md:py-3 bg-white/80 border border-slate-200/80 rounded-2xl text-[14px] outline-none focus:bg-white focus:border-indigo-400 focus:ring-[4px] focus:ring-indigo-500/10 transition-all w-full md:w-[360px] shadow-sm placeholder:text-slate-400 font-medium text-slate-700"
@@ -469,65 +486,7 @@ export default function AdminDashboard() {
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 tracking-widest shadow-sm z-10">
                   ⌘K
                 </div>
-                
-                {/* Search Results Dropdown */}
-                {globalSearchQuery && (
-                  <div className="absolute top-[calc(100%+8px)] left-0 w-full md:w-[400px] bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 max-h-[400px] flex flex-col">
-                    <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Search Results
-                    </div>
-                    <div className="overflow-y-auto p-2 flex-1">
-                      {activeTab === 'userList' ? (
-                        users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).length > 0 ? (
-                          users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).map(user => (
-                            <div key={user.id} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
-                              <div className="flex justify-between items-start gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">{user.username.charAt(0).toUpperCase()}</div>
-                                  <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{user.username}</h4>
-                                </div>
-                                <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wide">{user.role}</span>
-                              </div>
-                              <p className="text-xs text-slate-500 line-clamp-1">{user.category}</p>
-                              <div className="mt-1 text-xs text-slate-400">
-                                {user.availability === 'available' ? '🟢 Available' : '🔴 Unavailable'} • {user.active_tasks} active tasks
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-8 text-center text-sm text-slate-500">
-                            No users found for "{globalSearchQuery}"
-                          </div>
-                        )
-                      ) : (
-                        tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).length > 0 ? (
-                          tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).map(task => {
-                            const assignedUser = users.find(u => u.id === task.assigned_user_id);
-                            return (
-                              <div key={task.id} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
-                                <div className="flex justify-between items-start gap-2">
-                                  <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{task.title}</h4>
-                                  <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wide">{task.status.replace(/_/g, ' ')}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 line-clamp-2">{task.description || 'No description provided.'}</p>
-                                {assignedUser && (
-                                  <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                                    <div className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold text-slate-600">{assignedUser.username.charAt(0).toUpperCase()}</div>
-                                    {assignedUser.username}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className="p-8 text-center text-sm text-slate-500">
-                            No tasks found for "{globalSearchQuery}"
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </div>
-                )}
+
               </div>
               )}
             </div>
@@ -1035,6 +994,48 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Search Dropdown Portal */}
+      {globalSearchQuery && dropdownRect && typeof document !== 'undefined' && createPortal(
+        <div style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }} className="fixed bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-[9999] max-h-[400px] flex flex-col">
+          <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">Search Results</div>
+          <div className="overflow-y-auto p-2 flex-1">
+            {activeTab === 'leaderboard' ? (() => {
+              const results = leaderboard.map((u, i) => ({ ...u, rank: i + 1 })).filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase()));
+              return results.length > 0 ? results.map(u => (
+                <div key={u.id} className="p-3 hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-100 flex items-center gap-4 mb-1">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shrink-0 ${u.rank===1?'bg-indigo-600 text-white shadow-md shadow-indigo-200':u.rank===2?'bg-indigo-400 text-white':u.rank===3?'bg-indigo-300 text-white':'bg-slate-100 text-slate-600'}`}>#{u.rank}</div>
+                  <div className="flex-1 min-w-0"><div className="font-bold text-slate-800 text-sm truncate">{u.username}</div><div className="text-xs text-slate-400">{u.completedTasks} tasks completed</div></div>
+                  <div className="text-right shrink-0"><div className="font-black text-indigo-600 text-base">{u.totalScore} pts</div>{u.bonusPoints>0&&<div className="text-[10px] text-purple-500 font-bold">+{u.bonusPoints} bonus</div>}</div>
+                </div>
+              )) : <div className="p-6 text-center text-slate-400 text-sm">No user found matching &quot;{globalSearchQuery}&quot;</div>;
+            })() : activeTab === 'userList' ? (
+              users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).length > 0
+                ? users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).map(user => (
+                  <div key={user.id} className="p-3 hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
+                    <div className="flex justify-between items-start gap-2"><div className="flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">{user.username.charAt(0).toUpperCase()}</div><h4 className="text-sm font-bold text-slate-800">{user.username}</h4></div><span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full uppercase tracking-wide">{user.role}</span></div>
+                    <p className="text-xs text-slate-500">{user.category}</p>
+                    <div className="text-xs text-slate-400">{user.availability==='available'?'🟢 Available':'🔴 Unavailable'} • {user.active_tasks} active tasks</div>
+                  </div>
+                )) : <div className="p-8 text-center text-sm text-slate-500">No users found for &quot;{globalSearchQuery}&quot;</div>
+            ) : (
+              tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description&&t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).length > 0
+                ? tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description&&t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).map(task => {
+                    const au = users.find(u => u.id===task.assigned_user_id);
+                    return (
+                      <div key={task.id} className="p-3 hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
+                        <div className="flex justify-between items-start gap-2"><h4 className="text-sm font-bold text-slate-800 line-clamp-1">{task.title}</h4><span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full uppercase">{task.status.replace(/_/g,' ')}</span></div>
+                        <p className="text-xs text-slate-500 line-clamp-2">{task.description||'No description.'}</p>
+                        {au&&<div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600"><div className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold">{au.username.charAt(0).toUpperCase()}</div>{au.username}</div>}
+                      </div>
+                    );
+                  })
+                : <div className="p-8 text-center text-sm text-slate-500">No tasks found for &quot;{globalSearchQuery}&quot;</div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Change Password Modal */}
       <Dialog open={changePasswordModalOpen} onOpenChange={(open) => { setChangePasswordModalOpen(open); if(!open) setShowAdminChangePassword(false); }}>
