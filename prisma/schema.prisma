@@ -1,0 +1,53 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+model Organization {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  
+  users      User[]
+  tasks      Task[]
+
+  @@map("organizations")
+}
+
+model User {
+  id              Int           @id @default(autoincrement())
+  username        String        @db.VarChar(255)
+  password        String        @db.VarChar(255)
+  role            String        @db.VarChar(50)
+  availability    String?       @default("available") @db.VarChar(50)
+  category        String?       @db.VarChar(100)
+  organization_id Int?
+  
+  organization    Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  assignedTasks   Task[]
+
+  @@unique([organization_id, username])
+  @@map("users")
+}
+
+model Task {
+  id               Int           @id @default(autoincrement())
+  title            String        @db.VarChar(255)
+  description      String        @db.Text
+  assigned_user_id Int?
+  points           Int?
+  bonus_points     Int?          @default(0)
+  remarks          String?       @db.Text
+  status           String?       @default("active") @db.VarChar(50)
+  category         String?       @db.VarChar(100)
+  organization_id  Int?
+  
+  assigned_user    User?         @relation(fields: [assigned_user_id], references: [id], onDelete: SetNull)
+  organization     Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}

@@ -1,31 +1,24 @@
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Toaster } from 'sonner';
+import { AuthProvider } from '@/components/AuthProvider';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: "Task Manager",
-  description: "Professional Task Management System",
+  title: 'TaskFlow | Enterprise Task Management',
+  description: 'Streamline your team\'s productivity with TaskFlow. The ultimate enterprise solution for managing tasks, tracking progress, and boosting collaboration across organizations.',
+  keywords: 'Task Management, Enterprise, Productivity, Team Collaboration, TaskFlow',
+  authors: [{ name: 'TaskFlow Inc.' }],
 };
-
-import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({ children }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-zinc-50" suppressHydrationWarning>
-        {children}
+    <html lang="en">
+      <body className={`${inter.className} min-h-screen flex flex-col bg-slate-50`}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <Toaster position="top-right" />
       </body>
     </html>

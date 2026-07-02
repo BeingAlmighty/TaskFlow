@@ -1,8 +1,11 @@
 'use client';
 
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { logout } from '@/app/actions/auth';
+import { useAuth } from '@/components/AuthProvider';
 import { 
   LogOut, ClipboardList, Trophy, User as UserIcon, Calendar, MessageSquare, AlertCircle, PlayCircle, Send, CheckCircle2, Clock, Crown, Medal, Star, Gift, Shield
 } from 'lucide-react';
@@ -15,56 +18,54 @@ import { Textarea } from '@/components/ui/textarea';
 import { getUserTasks, submitTaskForReview } from '../actions/tasks';
 import { getLeaderboard, updateUserAvailability } from '../actions/users';
 
+import { useUserTasks, useLeaderboard } from '@/lib/hooks';
+
 export default function UserDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState({ id: '', username: '', category: '', availability: 'available' });
-  const [tasks, setTasks] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
+  const { user, refreshUser, broadcastAuthChange, isLoading: isAuthLoading } = useAuth();
+  
+  const { tasks, isLoading: tasksLoading, mutateUserTasks } = useUserTasks(user?.id);
+  const { leaderboard, isLoading: leaderboardLoading, mutateLeaderboard } = useLeaderboard();
+  
   const [activeTab, setActiveTab] = useState('myTasks');
 
   useEffect(() => {
-    const role = sessionStorage.getItem('role');
-    const id = sessionStorage.getItem('userId');
-    const username = sessionStorage.getItem('username');
-    const category = sessionStorage.getItem('category');
-    const availability = sessionStorage.getItem('availability') || 'available';
-    
-    if (!role || role !== 'user') {
-      router.push('/');
-      return;
+    if (!isAuthLoading) {
+      if (!user || user.role !== 'user') {
+        router.push('/login');
+        return;
+      }
     }
-    setUser({ id, username, category, availability });
-    loadAllData(id);
-  }, [router]);
+  }, [router, user, isAuthLoading]);
 
   const loadAllData = async (userId) => {
-    const [tasksRes, leaderboardRes] = await Promise.all([
-      getUserTasks(userId),
-      getLeaderboard()
-    ]);
-    
-    if (tasksRes.success) setTasks(tasksRes.tasks);
-    if (leaderboardRes.success) setLeaderboard(leaderboardRes.users);
+    mutateUserTasks();
+    mutateLeaderboard();
   };
 
-  const handleLogout = () => {
-    sessionStorage.clear();
-    router.push('/');
+  const handleLogout = async () => {
+    await logout();
+    await refreshUser();
+    broadcastAuthChange();
+    router.push('/login');
   };
 
   const handleAvailabilityChange = async (newStatus) => {
     if (newStatus === 'unavailable') {
-      if (!confirm('Are you sure you want to set your status to Unavailable? You will not be assigned new tasks while unavailable.')) {
-        return;
-      }
+      setPendingAvailability(newStatus);
+      setAvailabilityModalOpen(true);
+      return;
     }
+    await processAvailabilityChange(newStatus);
+  };
 
+  const processAvailabilityChange = async (newStatus) => {
     const res = await updateUserAvailability(user.id, newStatus);
     if (res.error) {
       toast.error(res.error);
     } else {
-      setUser({ ...user, availability: newStatus });
-      sessionStorage.setItem('availability', newStatus);
+      await refreshUser();
+      broadcastAuthChange();
       toast.success(`Availability updated to ${newStatus}`);
     }
   };
@@ -72,6 +73,9 @@ export default function UserDashboard() {
   // Submit Task Feature
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submitForm, setSubmitForm] = useState({ taskId: '', remarks: '' });
+  const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
+  const [pendingAvailability, setPendingAvailability] = useState(null);
+
 
   const handleSubmitTask = async (e) => {
     e.preventDefault();
@@ -99,28 +103,45 @@ export default function UserDashboard() {
     }
   };
 
+  if (isAuthLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen relative font-sans text-slate-800" style={{ background: '#f8fafc' }}>
       <div className="user-bg opacity-30"></div>
 
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-2xl border-b border-indigo-500/10 shadow-[0_4px_30px_rgba(0,0,0,0.05)]" style={{ background: 'linear-gradient(135deg, rgba(30,27,75,0.95) 0%, rgba(49,46,129,0.95) 100%)' }}>
-        <div className="max-w-[1400px] mx-auto px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center text-white text-2xl font-bold tracking-tight">
-            <UserIcon className="w-7 h-7 mr-3 text-indigo-400" />
-            User Portal
+        <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-3 md:py-5 flex flex-row justify-between items-center gap-4">
+          <div className="flex items-center text-white text-xl md:text-2xl font-bold tracking-tight">
+            <UserIcon className="w-6 h-6 md:w-7 md:h-7 mr-2 md:mr-3 text-indigo-400" />
+            <span>User Portal</span>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center bg-white/10 px-5 py-2.5 rounded-2xl backdrop-blur-md text-slate-200 font-medium border border-white/10">
+          <div className="flex items-center gap-3 md:gap-6">
+            
+            {/* Desktop Welcome Badge */}
+            <div className="hidden md:flex items-center bg-white/10 px-5 py-2.5 rounded-2xl backdrop-blur-md text-slate-200 font-medium border border-white/10">
               <Shield className="w-4 h-4 mr-2 text-indigo-300" />
-              <span className="opacity-80 mr-1">Welcome,</span> <span className="font-bold text-white mr-2 tracking-wide">{user.username}</span> 
+              <span className="opacity-80 mr-1">Welcome,</span> <span className="font-bold text-white mr-4 tracking-wide">{user.username}</span> 
               <span className="px-2 py-0.5 bg-indigo-500/30 text-indigo-200 rounded-md text-xs font-bold uppercase tracking-wider border border-indigo-400/20">{user.category || 'No Category'}</span>
             </div>
+
+            {/* Mobile Welcome Info */}
+            <div className="flex md:hidden flex-col items-end mr-1">
+              <span className="font-bold text-white text-sm leading-tight">{user.username}</span>
+              <span className="text-indigo-300 text-[9px] font-bold uppercase tracking-wider leading-tight">{user.category || 'No Category'}</span>
+            </div>
+
             <button 
               onClick={handleLogout}
-              className="flex items-center font-bold px-5 py-2.5 rounded-xl transition-all duration-300 hover:bg-white/10 border border-transparent hover:border-white/20 text-white"
+              className="flex items-center justify-center font-bold p-2 md:px-5 md:py-2.5 rounded-xl transition-all duration-300 hover:bg-white/10 border border-transparent hover:border-white/20 text-white"
             >
-              <LogOut className="w-4 h-4 mr-2" /> Logout
+              <LogOut className="w-5 h-5 md:w-4 md:h-4 md:mr-2" /> <span className="hidden md:inline">Logout</span>
             </button>
           </div>
         </div>
@@ -133,18 +154,22 @@ export default function UserDashboard() {
             <div className={`w-2.5 h-2.5 rounded-full shadow-sm ${user.availability === 'available' ? 'bg-indigo-500 animate-pulse' : 'bg-slate-400'}`}></div>
             Status
           </label>
-          <select 
+          <Select 
             value={user.availability} 
-            onChange={(e) => handleAvailabilityChange(e.target.value)}
-            className="px-4 py-2 border border-slate-200 rounded-xl bg-slate-50 font-semibold text-slate-800 cursor-pointer transition-all focus:outline-none focus:border-indigo-500 focus:bg-white min-w-[140px] text-sm"
+            onValueChange={handleAvailabilityChange}
           >
-            <option value="available">Available for Tasks</option>
-            <option value="unavailable">Away / Unavailable</option>
-          </select>
+            <SelectTrigger className="px-4 py-2 h-auto justify-between gap-3 border border-slate-200 rounded-xl bg-slate-50 font-semibold text-slate-800 cursor-pointer transition-all outline-none focus-visible:border-indigo-500 focus-visible:bg-white min-w-[180px] text-sm">
+              <SelectValue placeholder="Availability" />
+            </SelectTrigger>
+            <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl z-[60]">
+              <SelectItem value="available" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Available for Tasks</SelectItem>
+              <SelectItem value="unavailable" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Away / Unavailable</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto p-8 relative z-10">
+      <div className="max-w-[1400px] mx-auto p-4 md:p-8 relative z-10">
         {/* Tab System */}
         <div className="mb-10">
           <div className="flex bg-white/50 p-1.5 rounded-2xl backdrop-blur-xl shadow-sm border border-slate-200 gap-2 mb-8 max-w-sm mx-auto">
@@ -166,12 +191,12 @@ export default function UserDashboard() {
             ))}
           </div>
 
-          <div className="bg-white/80 backdrop-blur-2xl rounded-[32px] p-8 lg:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-200/60 animate-[slideUp_0.3s_ease-out]">
+          <div className="bg-white/80 backdrop-blur-2xl rounded-[32px] p-5 md:p-8 lg:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-200/60 animate-[slideUp_0.3s_ease-out]">
             
             {/* My Tasks Tab */}
             {activeTab === 'myTasks' && (
               <div>
-                <div className="text-3xl font-bold text-slate-800 mb-8 flex items-center gap-3 tracking-tight">
+                <div className="text-3xl font-bold text-slate-800 mb-8 flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3 tracking-tight text-center md:text-left">
                   <ClipboardList className="w-8 h-8 text-indigo-600" /> Active Assignments
                 </div>
 
@@ -188,12 +213,11 @@ export default function UserDashboard() {
                       const StatusIcon = statusInfo.icon;
                       
                       return (
-                        <div key={task.id} className="bg-white rounded-[24px] p-8 shadow-sm border border-slate-200 transition-all duration-300 hover:shadow-md relative overflow-hidden group">
-                          <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-b from-indigo-500 to-purple-500 opacity-80"></div>
+                        <div key={task.id} className="bg-white rounded-[24px] p-5 md:p-8 shadow-sm border border-slate-200 border-l-[6px] border-l-indigo-500 transition-all duration-300 hover:shadow-md relative overflow-hidden group">
                           
-                          <div className="flex flex-col lg:flex-row justify-between items-start gap-4 mb-6">
-                            <div>
-                              <div className="flex items-center gap-3 mb-2">
+                          <div className="flex flex-col lg:flex-row justify-between items-center lg:items-start gap-4 mb-6">
+                            <div className="w-full flex flex-col items-center lg:items-start">
+                              <div className="flex flex-col sm:flex-row items-center gap-3 mb-2 text-center lg:text-left">
                                 <h3 className="text-2xl font-bold text-slate-800 tracking-tight">{task.title}</h3>
                                 <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold px-3 py-1 rounded-lg uppercase tracking-wider">
                                   {task.category || 'General'}
@@ -205,7 +229,7 @@ export default function UserDashboard() {
                             </div>
                           </div>
 
-                          <p className="text-slate-600 leading-relaxed mb-8 font-medium whitespace-pre-wrap">{task.description}</p>
+                          <p className="text-slate-600 leading-relaxed mb-8 font-medium whitespace-pre-wrap text-center lg:text-left">{task.description}</p>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                             <div className="flex items-center gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100">
@@ -235,7 +259,7 @@ export default function UserDashboard() {
 
                           {task.remarks && (
                             <div className="bg-purple-50/50 border border-purple-100 rounded-2xl p-5 mt-4">
-                              <strong className="flex items-center gap-2 text-purple-800 mb-2 text-sm uppercase tracking-wider font-bold"><MessageSquare className="w-4 h-4" /> Admin Feedback</strong>
+                              <strong className="flex items-center gap-2 text-purple-800 mb-2 text-sm uppercase tracking-wider font-bold"><MessageSquare className="w-4 h-4" /> User Remarks</strong>
                               <p className="text-purple-900/80 font-medium">{task.remarks}</p>
                             </div>
                           )}
@@ -261,7 +285,7 @@ export default function UserDashboard() {
             {/* Leaderboard Tab */}
             {activeTab === 'leaderboard' && (
               <div>
-                <div className="text-3xl font-bold text-slate-800 mb-8 flex items-center gap-3 tracking-tight">
+                <div className="text-3xl font-bold text-slate-800 mb-8 flex flex-col sm:flex-row items-center justify-center md:justify-start gap-3 tracking-tight text-center md:text-left">
                   <Crown className="w-8 h-8 text-indigo-600" /> Team Leaderboard
                 </div>
 
@@ -284,13 +308,11 @@ export default function UserDashboard() {
                           leaderboard.map((u, i) => {
                             const isCurrentUser = u.id.toString() === user.id.toString();
                             
-                            // Row styling based on position and current user
                             let className = "border-b border-slate-100 hover:bg-slate-50 transition-colors last:border-0";
                             if (isCurrentUser) {
                               className = "bg-indigo-50/50 border-l-4 border-l-indigo-500 border-b border-slate-100 hover:bg-indigo-50";
                             }
 
-                            // Rank badge styling
                             let rankBadgeClass = "inline-flex items-center justify-center w-8 h-8 rounded-full font-bold shadow-sm ";
                             if (i === 0) { rankBadgeClass += "bg-indigo-600 text-white shadow-indigo-200"; }
                             else if (i === 1) { rankBadgeClass += "bg-indigo-400 text-white"; }
@@ -323,6 +345,39 @@ export default function UserDashboard() {
         </div>
       </div>
 
+      
+      {/* Availability Confirm Modal */}
+      <Dialog open={availabilityModalOpen} onOpenChange={setAvailabilityModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white/95 backdrop-blur-xl border border-slate-100 shadow-2xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-slate-800 text-center mb-2">Set Status to Unavailable?</DialogTitle>
+          </DialogHeader>
+          <div className="text-center text-slate-600 mb-6">
+            Are you sure you want to set your status to Unavailable? You will not be assigned new tasks while unavailable.
+          </div>
+          <DialogFooter className="flex sm:justify-center gap-3">
+            <button 
+              onClick={() => {
+                setAvailabilityModalOpen(false);
+                setPendingAvailability(null);
+              }}
+              className="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 hover:text-slate-900 transition-all focus:outline-none focus:ring-2 focus:ring-slate-200"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={() => {
+                setAvailabilityModalOpen(false);
+                processAvailabilityChange(pendingAvailability);
+              }}
+              className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Confirm
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Submit Task Modal */}
       <Dialog open={submitModalOpen} onOpenChange={setSubmitModalOpen}>
         <DialogContent className="sm:max-w-[450px]">
@@ -341,9 +396,9 @@ export default function UserDashboard() {
                 className="resize-y border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium"
               />
             </div>
-            <DialogFooter>
-              <button type="button" onClick={() => setSubmitModalOpen(false)} className="px-5 py-2.5 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">Cancel</button>
-              <button type="submit" className="px-6 py-2.5 text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all bg-indigo-600 hover:bg-indigo-700 flex items-center gap-2">
+            <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-4">
+              <button type="button" onClick={() => setSubmitModalOpen(false)} className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors">Cancel</button>
+              <button type="submit" className="w-full sm:w-auto px-6 py-2.5 text-white rounded-xl font-bold shadow-md hover:-translate-y-0.5 transition-all bg-indigo-600 hover:bg-indigo-700 flex items-center justify-center gap-2">
                 Submit <Send className="w-3.5 h-3.5" />
               </button>
             </DialogFooter>

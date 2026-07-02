@@ -1,43 +1,89 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { logout } from '@/app/actions/auth';
+import { useAuth } from '@/components/AuthProvider';
 import { 
   ClipboardList, PlusCircle, Users, Trophy, Shield, LogOut, 
-  Clock, CheckCircle2, AlertCircle, Eye, EyeOff, Key, Send, Edit, PlayCircle, Star, Sparkles
+  Clock, CheckCircle2, AlertCircle, Eye, EyeOff, Key, Send, Edit, PlayCircle, Star, Sparkles, Menu, ChevronLeft, ChevronDown, Search, Bell, UploadCloud, FileSpreadsheet, X, User, MessageSquare
 } from 'lucide-react';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+import AdminSidebar from '@/components/admin/AdminSidebar';
 
 import { 
-  getTasks, createTask, assignPoints, endTaskWithoutPoints, addBonusPoints, updateTask
+  getTasks, createTask, bulkCreateTasks, assignPoints, endTaskWithoutPoints, addBonusPoints, updateTask
 } from '../actions/tasks';
 import { 
   getUsers, createUser, getDashboardStats, updateUserPassword, updateUserAvailability, getLeaderboard
 } from '../actions/users';
+import { 
+  useTasks, useUsers, useLeaderboard, useDashboardStats 
+} from '@/lib/hooks';
+
+// Utility for fuzzy matching
+const levenshtein = (a, b) => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = Array(a.length + 1).fill(null).map(() => Array(b.length + 1).fill(null));
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const indicator = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j] + 1,
+        matrix[i - 1][j - 1] + indicator
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+};
+
+const getClosestCategory = (inputCategory, validCategories) => {
+  let closest = validCategories[0];
+  let minDistance = Infinity;
+  for (const cat of validCategories) {
+    const dist = levenshtein(inputCategory.toLowerCase(), cat.toLowerCase());
+    if (dist < minDistance) {
+      minDistance = dist;
+      closest = cat;
+    }
+  }
+  return closest;
+};
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [adminName, setAdminName] = useState('');
   const [activeTab, setActiveTab] = useState('taskBench');
-  const [stats, setStats] = useState({ totalTasks: 0, activeUsers: 0, pendingReview: 0 });
-  
-  // Data states
-  const [tasks, setTasks] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // SWR Hooks
+  const { tasks, isLoading: tasksLoading, mutateTasks } = useTasks();
+  const { users, isLoading: usersLoading, mutateUsers } = useUsers();
+  const { leaderboard, isLoading: leaderboardLoading, mutateLeaderboard } = useLeaderboard();
+  const { stats, isLoading: statsLoading, mutateStats } = useDashboardStats();
 
   // Filter states
   const [taskFilter, setTaskFilter] = useState('all');
   const [taskUserFilter, setTaskUserFilter] = useState('all');
   const [taskCategoryFilter, setTaskCategoryFilter] = useState('all');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   
   const [userAvailabilityFilter, setUserAvailabilityFilter] = useState('all');
-  const [userAssignmentFilter, setUserAssignmentFilter] = useState('all');
+  const [userCategoryFilter, setUserCategoryFilter] = useState('all');
 
   // Form states
   const [createTaskForm, setCreateTaskForm] = useState({ title: '', category: 'Strategy and Growth', description: '', points: 10, assigned_to: '' });
@@ -54,34 +100,37 @@ export default function AdminDashboard() {
   const [editTaskForm, setEditTaskForm] = useState({ title: '', description: '', category: 'Strategy and Growth', points: 10, assigned_to: '' });
   
   const [showCreateUserPassword, setShowCreateUserPassword] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [verifyingTask, setVerifyingTask] = useState(null);
+  const [verifyBonusPoints, setVerifyBonusPoints] = useState('');
+  
+  const [endTaskModalOpen, setEndTaskModalOpen] = useState(false);
+  const [endingTask, setEndingTask] = useState(null);
+
+  const { user, refreshUser, broadcastAuthChange, isLoading: isAuthLoading } = useAuth();
 
   useEffect(() => {
-    const role = sessionStorage.getItem('role');
-    const storedUsername = sessionStorage.getItem('username');
-    if (!role || role !== 'admin') {
-      router.push('/');
-      return;
+    if (!isAuthLoading) {
+      if (!user || user.role !== 'admin') {
+        router.push('/login');
+        return;
+      }
+      setAdminName(user.username || 'Admin');
     }
-    setAdminName(storedUsername || 'Admin');
-    loadDashboardData();
-  }, [router]);
+  }, [router, user, isAuthLoading]);
 
   const loadDashboardData = async () => {
-    const [statsRes, tasksRes, usersRes, leaderboardRes] = await Promise.all([
-      getDashboardStats(),
-      getTasks(),
-      getUsers(),
-      getLeaderboard()
-    ]);
-    if (statsRes.success) setStats(statsRes.stats);
-    if (tasksRes.success) setTasks(tasksRes.tasks);
-    if (usersRes.success) setUsers(usersRes.users.filter(u => u.role !== 'admin'));
-    if (leaderboardRes.success) setLeaderboard(leaderboardRes.users);
+    mutateTasks();
+    mutateUsers();
+    mutateLeaderboard();
+    mutateStats();
   };
 
-  const handleLogout = () => {
-    sessionStorage.clear();
-    router.push('/');
+  const handleLogout = async () => {
+    await logout();
+    await refreshUser();
+    broadcastAuthChange();
+    router.push('/login');
   };
 
   // Task Filters
@@ -95,10 +144,8 @@ export default function AdminDashboard() {
   // User Filters
   const filteredUsers = users.filter(user => {
     const matchAvail = userAvailabilityFilter === 'all' || user.availability === userAvailabilityFilter;
-    let matchAssign = true;
-    if (userAssignmentFilter === 'assigned') matchAssign = user.active_tasks > 0;
-    if (userAssignmentFilter === 'unassigned') matchAssign = user.active_tasks === 0;
-    return matchAvail && matchAssign;
+    const matchCategory = userCategoryFilter === 'all' || user.category === userCategoryFilter;
+    return matchAvail && matchCategory;
   });
 
   // Available Users for Assignment
@@ -106,6 +153,128 @@ export default function AdminDashboard() {
   const availableUsersForEditTask = users.filter(u => u.availability === 'available' && u.category === editTaskForm.category);
 
   // Task Actions
+
+  const downloadTemplate = () => {
+    const validCategories = [
+      "Strategy and Growth",
+      "Human Resource Management",
+      "Marketing",
+      "Content and Designing",
+      "Technical",
+      "Expansion strategist",
+      "Fund raising poc",
+      "Legal compliance executive"
+    ];
+    
+    // Create worksheet data
+    const wsData = [
+      ["Title", "Description", "Category", "Points", "Username"],
+      ["Example Task 1", "This is an example description", validCategories[0], "15", "anmol"],
+      ["Example Task 2", "Another task description", validCategories[1], "20", "udit"]
+    ];
+    
+    // Add categories list to the side so users can see them
+    wsData[0].push("", "Available Categories (For Reference):");
+    validCategories.forEach((cat, index) => {
+      if (wsData[index + 1]) {
+        wsData[index + 1].push("", cat);
+      } else {
+        const newRow = ["", "", "", "", "", "", cat];
+        wsData.push(newRow);
+      }
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    
+    ws['!cols'] = [
+      { wch: 20 }, // Title
+      { wch: 30 }, // Description
+      { wch: 25 }, // Category
+      { wch: 10 }, // Points
+      { wch: 15 }, // Username
+      { wch: 5 },  // Spacer
+      { wch: 30 }  // Available Categories
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "Task_Import_Template.xlsx");
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        let successCount = 0;
+        const validCategories = [
+          "Strategy and Growth",
+          "Human Resource Management",
+          "Marketing",
+          "Content and Designing",
+          "Technical",
+          "Expansion strategist",
+          "Fund raising poc",
+          "Legal compliance executive"
+        ];
+
+        const newTasks = [];
+
+        data.forEach((row) => {
+          if (!row.Title) return;
+          
+          let assignedUserId = null;
+          if (row.Username) {
+            const foundUser = users.find(u => u.username.toLowerCase() === row.Username.toString().toLowerCase());
+            if (foundUser && foundUser.availability === 'available') {
+              assignedUserId = foundUser.id;
+            }
+          }
+
+          const matchedCategory = row.Category ? getClosestCategory(row.Category.toString(), validCategories) : 'Strategy and Growth';
+
+          newTasks.push({
+            title: row.Title,
+            description: row.Description || '',
+            category: matchedCategory,
+            assigned_user_id: assignedUserId,
+            points: parseInt(row.Points) || 10
+          });
+          successCount++;
+        });
+
+        if (successCount > 0) {
+          toast.loading("Importing tasks...");
+          const res = await bulkCreateTasks(newTasks);
+          toast.dismiss();
+          
+          if (res.error) {
+            toast.error(res.error);
+          } else {
+            toast.success(`Successfully imported ${successCount} tasks!`);
+            loadDashboardData();
+            setActiveTab('taskBench');
+          }
+        } else {
+          toast.error("No valid tasks found in the file.");
+        }
+      } catch (err) {
+        toast.error("Failed to parse the file.");
+        console.error(err);
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null; // reset input
+  };
+
   const handleCreateTask = async (e) => {
     e.preventDefault();
     const res = await createTask(createTaskForm.title, createTaskForm.description, createTaskForm.category, createTaskForm.points, createTaskForm.assigned_to);
@@ -136,26 +305,43 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCompleteTask = async (taskId) => {
-    const basePoints = tasks.find(t => t.id === taskId)?.points || 0;
-    const input = prompt(`Enter bonus points (0-50). Base points: ${basePoints}`, '0');
-    if (input === null) return;
-    const bonus = parseInt(input) || 0;
+  const handleCompleteTask = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      setVerifyingTask(task);
+      setVerifyBonusPoints('');
+      setVerifyModalOpen(true);
+    }
+  };
+
+  const submitVerification = async () => {
+    if (!verifyingTask) return;
+    const bonus = parseInt(verifyBonusPoints) || 0;
     
-    const res = await assignPoints(taskId, basePoints, bonus, 'Admin verified task');
+    const res = await assignPoints(verifyingTask.id, verifyingTask.points, bonus, 'Admin verified task');
     if (res.error) toast.error(res.error);
     else {
       toast.success('Task marked as completed!');
+      setVerifyModalOpen(false);
       loadDashboardData();
     }
   };
 
-  const handleEndTask = async (taskId) => {
-    if (!confirm('Are you sure you want to end this task? It will be marked as failed (0 points).')) return;
-    const res = await endTaskWithoutPoints(taskId, 'failed', 'Ended by admin');
+  const handleEndTask = (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      setEndingTask(task);
+      setEndTaskModalOpen(true);
+    }
+  };
+
+  const submitEndTask = async () => {
+    if (!endingTask) return;
+    const res = await endTaskWithoutPoints(endingTask.id, 'failed', 'Ended by admin');
     if (res.error) toast.error(res.error);
     else {
       toast.success('Task ended (failed).');
+      setEndTaskModalOpen(false);
       loadDashboardData();
     }
   };
@@ -224,94 +410,160 @@ export default function AdminDashboard() {
     );
   };
 
-  return (
-    <div className="min-h-screen relative font-sans text-slate-800" style={{ background: '#f8fafc' }}>
-      <div className="admin-bg opacity-30"></div>
-
-      {/* Header */}
-      <div className="sticky top-0 z-50 backdrop-blur-2xl border-b border-indigo-500/10" style={{ background: 'linear-gradient(135deg, rgba(79,70,229,0.95) 0%, rgba(49,46,129,0.95) 100%)', color: 'white' }}>
-        <div className="max-w-[1400px] mx-auto px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center text-xl font-bold tracking-tight">
-            <ClipboardList className="mr-3 w-6 h-6 text-indigo-300" />
-            TaskFlow Admin
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center bg-white/10 px-4 py-2 rounded-xl backdrop-blur-md border border-white/10 text-sm font-medium">
-              <Shield className="w-4 h-4 mr-2 text-indigo-300" />
-              <span>{adminName}</span>
-            </div>
-            <button 
-              onClick={handleLogout}
-              className="flex items-center text-sm font-medium px-4 py-2 rounded-xl transition-all duration-300 hover:bg-white/10 border border-transparent hover:border-white/20"
-            >
-              <LogOut className="w-4 h-4 mr-2" /> Logout
-            </button>
-          </div>
-        </div>
+  if (isAuthLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin"></div>
       </div>
+    );
+  }
 
-      <div className="max-w-[1400px] mx-auto p-8 relative z-10">
+  return (
+    <div className={cn("h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden font-sans text-slate-800")}>
+      
+      {/* Sidebar Component */}
+      <AdminSidebar 
+        sidebarOpen={sidebarOpen} 
+        setSidebarOpen={setSidebarOpen}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        adminName={adminName}
+        handleLogout={handleLogout}
+      />
+
+      {/* Main Dashboard Content */}
+      <div className="flex flex-1 flex-col overflow-y-auto w-full relative pb-24 md:pb-0">
+        <div className="admin-bg opacity-30 absolute inset-0 pointer-events-none"></div>
         
-        {/* Dashboard Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(79,70,229,0.08)] relative overflow-hidden group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Total Tasks</span>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100">
+        <div className="p-4 md:p-8 max-w-[1400px] mx-auto w-full relative z-10">
+          
+          {/* Top Header */}
+          <div className="flex flex-col mb-8 gap-5 bg-white/60 backdrop-blur-xl p-5 md:p-6 rounded-[24px] border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] items-center text-center">
+            <div className="flex flex-col items-center justify-center w-full">
+              <h1 className="text-2xl md:text-[28px] font-black text-slate-800 tracking-tight leading-tight">
+                {activeTab === 'taskBench' ? 'Task Bench' : 
+                 activeTab === 'userList' ? 'Team Directory' : 
+                 activeTab === 'leaderboard' ? 'Leaderboard' : 
+                 activeTab === 'createTask' ? 'Create Task' :
+                 activeTab === 'bulkImport' ? 'Bulk Import' : 'Dashboard'}
+              </h1>
+              <p className="text-[13px] md:text-sm text-slate-500 mt-2 font-medium max-w-md">
+                {activeTab === 'taskBench' ? 'Manage and track tasks across your workspace.' : 
+                 activeTab === 'userList' ? 'Manage users and roles across your workspace.' : 
+                 activeTab === 'leaderboard' ? 'View top performers and points.' : 
+                 activeTab === 'bulkImport' ? 'Automate task creation via Excel.' : 'Create a new task for your workspace.'}
+              </p>
+            </div>
+            
+            <div className="flex items-center justify-center w-full mt-2 md:mt-0">
+              {activeTab !== 'leaderboard' && (
+              <div className="relative w-full md:w-auto group flex justify-center">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-slate-400 group-focus-within:text-indigo-600 transition-colors z-10" />
+                <input 
+                  type="text" 
+                  placeholder={activeTab === 'userList' ? 'Search users...' : 'Search tasks...'} 
+                  value={globalSearchQuery}
+                  onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                  className="pl-12 pr-14 py-3.5 md:py-3 bg-white/80 border border-slate-200/80 rounded-2xl text-[14px] outline-none focus:bg-white focus:border-indigo-400 focus:ring-[4px] focus:ring-indigo-500/10 transition-all w-full md:w-[360px] shadow-sm placeholder:text-slate-400 font-medium text-slate-700"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 tracking-widest shadow-sm z-10">
+                  ⌘K
+                </div>
+                
+                {/* Search Results Dropdown */}
+                {globalSearchQuery && (
+                  <div className="absolute top-[calc(100%+8px)] left-0 w-full md:w-[400px] bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 max-h-[400px] flex flex-col">
+                    <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Search Results
+                    </div>
+                    <div className="overflow-y-auto p-2 flex-1">
+                      {activeTab === 'userList' ? (
+                        users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).length > 0 ? (
+                          users.filter(u => u.username.toLowerCase().includes(globalSearchQuery.toLowerCase())).map(user => (
+                            <div key={user.id} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">{user.username.charAt(0).toUpperCase()}</div>
+                                  <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{user.username}</h4>
+                                </div>
+                                <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wide">{user.role}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 line-clamp-1">{user.category}</p>
+                              <div className="mt-1 text-xs text-slate-400">
+                                {user.availability === 'available' ? '🟢 Available' : '🔴 Unavailable'} • {user.active_tasks} active tasks
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-8 text-center text-sm text-slate-500">
+                            No users found for "{globalSearchQuery}"
+                          </div>
+                        )
+                      ) : (
+                        tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).length > 0 ? (
+                          tasks.filter(t => t.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || (t.description && t.description.toLowerCase().includes(globalSearchQuery.toLowerCase()))).map(task => {
+                            const assignedUser = users.find(u => u.id === task.assigned_user_id);
+                            return (
+                              <div key={task.id} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-100 flex flex-col gap-1 mb-1">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className="text-sm font-bold text-slate-800 line-clamp-1">{task.title}</h4>
+                                  <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full shrink-0 uppercase tracking-wide">{task.status.replace(/_/g, ' ')}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 line-clamp-2">{task.description || 'No description provided.'}</p>
+                                {assignedUser && (
+                                  <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                    <div className="w-4 h-4 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold text-slate-600">{assignedUser.username.charAt(0).toUpperCase()}</div>
+                                    {assignedUser.username}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="p-8 text-center text-sm text-slate-500">
+                            No tasks found for "{globalSearchQuery}"
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dashboard Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 shadow-sm border border-slate-200/70 flex items-center gap-4 transition-all hover:shadow-md">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100/50">
                 <ClipboardList className="w-5 h-5" />
               </div>
+              <div>
+                <div className="text-sm font-medium text-slate-500">Total Tasks</div>
+                <div className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">{stats.totalTasks}</div>
+              </div>
             </div>
-            <div className="text-4xl font-bold text-slate-800 mb-2 tracking-tight">{stats.totalTasks}</div>
-            <div className="text-xs font-medium text-slate-500 flex items-center gap-1"><ClipboardList className="w-3 h-3"/> All tasks in system</div>
-          </div>
 
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(79,70,229,0.08)] relative overflow-hidden group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Active Users</span>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600 border border-purple-100">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 shadow-sm border border-slate-200/70 flex items-center gap-4 transition-all hover:shadow-md">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-100/50">
                 <Users className="w-5 h-5" />
               </div>
-            </div>
-            <div className="text-4xl font-bold text-slate-800 mb-2 tracking-tight">{stats.activeUsers}</div>
-            <div className="text-xs font-medium text-slate-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Available for tasks</div>
-          </div>
-
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-slate-200/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(79,70,229,0.08)] relative overflow-hidden group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Pending Review</span>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-100">
-                <Clock className="w-5 h-5" />
+              <div>
+                <div className="text-sm font-medium text-slate-500">Active Users</div>
+                <div className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">{stats.activeUsers}</div>
               </div>
             </div>
-            <div className="text-4xl font-bold text-slate-800 mb-2 tracking-tight">{stats.pendingReview}</div>
-            <div className="text-xs font-medium text-slate-500 flex items-center gap-1"><Eye className="w-3 h-3"/> Awaiting review</div>
-          </div>
-        </div>
 
-        {/* Tab System */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-2 mb-6 p-1.5 bg-white/50 backdrop-blur-xl border border-slate-200 rounded-2xl inline-flex shadow-sm">
-            {[
-              { id: 'taskBench', icon: ClipboardList, label: 'Task Bench' },
-              { id: 'createTask', icon: PlusCircle, label: 'Create Task' },
-              { id: 'userList', icon: Users, label: 'User Management' },
-              { id: 'leaderboard', icon: Trophy, label: 'Leaderboard' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 ${
-                  activeTab === tab.id 
-                    ? 'bg-indigo-600 text-white shadow-md' 
-                    : 'text-slate-600 hover:bg-white hover:text-indigo-600 hover:shadow-sm'
-                }`}
-              >
-                <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-            ))}
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 shadow-sm border border-slate-200/70 flex items-center gap-4 transition-all hover:shadow-md">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-amber-50 text-amber-600 border border-amber-100/50">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-slate-500">Pending Review</div>
+                <div className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">{stats.pendingReview}</div>
+              </div>
+            </div>
           </div>
 
           <div className="bg-white/80 backdrop-blur-2xl rounded-3xl p-8 shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-slate-200/60 animate-[fadeIn_0.3s_ease-in-out]">
@@ -326,44 +578,61 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
                   <div>
                     <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Status</label>
-                    <select 
-                      className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-700"
-                      value={taskFilter} onChange={e => setTaskFilter(e.target.value)}
-                    >
-                      <option value="all">All Tasks</option>
-                      <option value="unassigned">Unassigned</option>
-                      <option value="assigned">Assigned</option>
-                      <option value="to_be_reviewed">Submitted (Pending Review)</option>
-                      <option value="completed">Completed</option>
-                      <option value="failed">Failed/Cancelled</option>
-                    </select>
+                    <Select value={taskFilter} onValueChange={setTaskFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Tasks">
+                          {taskFilter === 'all' ? 'All Tasks' : 
+                           taskFilter === 'unassigned' ? 'Unassigned' :
+                           taskFilter === 'assigned' ? 'Assigned' :
+                           taskFilter === 'to_be_reviewed' ? 'Submitted (Pending Review)' :
+                           taskFilter === 'completed' ? 'Completed' :
+                           taskFilter === 'failed' ? 'Failed/Cancelled' : 'All Tasks'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Tasks</SelectItem>
+                        <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Unassigned</SelectItem>
+                        <SelectItem value="assigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Assigned</SelectItem>
+                        <SelectItem value="to_be_reviewed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Submitted (Pending Review)</SelectItem>
+                        <SelectItem value="completed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Completed</SelectItem>
+                        <SelectItem value="failed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Failed/Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by User</label>
-                    <select 
-                      className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-700"
-                      value={taskUserFilter} onChange={e => setTaskUserFilter(e.target.value)}
-                    >
-                      <option value="all">All Users</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-                    </select>
+                    <Select value={taskUserFilter} onValueChange={setTaskUserFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Users">
+                          {taskUserFilter === 'all' ? 'All Users' : users.find(u => u.id === taskUserFilter)?.username || 'All Users'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Users</SelectItem>
+                        {users.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Category</label>
-                    <select 
-                      className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-700"
-                      value={taskCategoryFilter} onChange={e => setTaskCategoryFilter(e.target.value)}
-                    >
-                      <option value="all">All Categories</option>
-                      <option value="Strategy and Growth">Strategy and Growth</option>
-                      <option value="Human Resource Management">Human Resource Management</option>
-                      <option value="Marketing">Marketing</option>
-                      <option value="Content and Designing">Content and Designing</option>
-                      <option value="Technical">Technical</option>
-                      <option value="Expansion strategist">Expansion strategist</option>
-                      <option value="Fund raising poc">Fund raising poc</option>
-                      <option value="Legal compliance executive">Legal compliance executive</option>
-                    </select>
+                    <Select value={taskCategoryFilter} onValueChange={setTaskCategoryFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Categories">
+                          {taskCategoryFilter === 'all' ? 'All Categories' : taskCategoryFilter}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Categories</SelectItem>
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -393,10 +662,7 @@ export default function AdminDashboard() {
                               <td className="p-4 font-medium text-slate-600">{task.category}</td>
                               <td className="p-4">
                                 {task.assigned_user_id ? (
-                                  <div className="flex items-center gap-2 font-semibold text-slate-700">
-                                    <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs border border-indigo-200">
-                                      {task.assignedUserName?.charAt(0).toUpperCase()}
-                                    </div>
+                                  <div className="font-semibold text-slate-700">
                                     {task.assignedUserName}
                                   </div>
                                 ) : <span className="text-slate-400 italic font-medium">Unassigned</span>}
@@ -436,12 +702,7 @@ export default function AdminDashboard() {
                                       className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-white text-rose-600 hover:bg-rose-50 border border-rose-200"
                                     ><AlertCircle className="w-3.5 h-3.5"/> End</button>
                                   )}
-                                  {task.status === 'completed' && (
-                                    <button 
-                                      onClick={() => handleAwardBonus(task.id)}
-                                      className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200"
-                                    ><Sparkles className="w-3.5 h-3.5"/> Bonus</button>
-                                  )}
+
                                 </div>
                               </td>
                             </tr>
@@ -472,19 +733,24 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Category</label>
-                        <select 
-                          value={createTaskForm.category} onChange={e => setCreateTaskForm({...createTaskForm, category: e.target.value, assigned_to: ''})}
-                          className="w-full p-3.5 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-800"
+                        <Select 
+                          value={createTaskForm.category} 
+                          onValueChange={val => setCreateTaskForm({...createTaskForm, category: val, assigned_to: ''})}
                         >
-                          <option value="Strategy and Growth">Strategy and Growth</option>
-                          <option value="Human Resource Management">Human Resource Management</option>
-                          <option value="Marketing">Marketing</option>
-                          <option value="Content and Designing">Content and Designing</option>
-                          <option value="Technical">Technical</option>
-                          <option value="Expansion strategist">Expansion strategist</option>
-                          <option value="Fund raising poc">Fund raising poc</option>
-                          <option value="Legal compliance executive">Legal compliance executive</option>
-                        </select>
+                          <SelectTrigger className="w-full p-3.5 h-auto justify-between gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-800">
+                            <SelectValue placeholder="Select Category" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
+                            <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
+                            <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
+                            <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
+                            <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
+                            <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
+                            <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
+                            <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
+                            <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
                         <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Base Points</label>
@@ -496,13 +762,18 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                       <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Assign To (Must be available)</label>
-                      <select 
-                        value={createTaskForm.assigned_to} onChange={e => setCreateTaskForm({...createTaskForm, assigned_to: e.target.value})}
-                        className="w-full p-3.5 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-800"
+                      <Select 
+                        value={createTaskForm.assigned_to || "Unassigned"} 
+                        onValueChange={val => setCreateTaskForm({...createTaskForm, assigned_to: val === "Unassigned" ? "" : val})}
                       >
-                        <option value="">Leave Unassigned</option>
-                        {availableUsersForTask.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-                      </select>
+                        <SelectTrigger className="w-full p-3.5 h-auto justify-between gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-800">
+                          <SelectValue placeholder="Leave Unassigned" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
+                          <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Leave Unassigned</SelectItem>
+                          {availableUsersForTask.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                       {availableUsersForTask.length === 0 && <p className="text-xs font-semibold text-rose-500 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> No available users in this category.</p>}
                     </div>
                     <div>
@@ -522,19 +793,53 @@ export default function AdminDashboard() {
                 <div className="lg:w-1/3 mt-8 lg:mt-0">
                   <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 sticky top-28">
                     <div className="text-lg font-bold text-indigo-900 mb-4 flex items-center gap-2">
-                      <Sparkles className="text-indigo-500 w-5 h-5" /> Best Practices
+                      <UploadCloud className="text-indigo-500 w-5 h-5" /> Bulk Import
                     </div>
-                    <ul className="space-y-4 text-sm text-slate-700 font-medium">
-                      <li className="flex gap-3"><div className="mt-0.5 text-indigo-500"><CheckCircle2 className="w-4 h-4"/></div> Be concise but descriptive in titles.</li>
-                      <li className="flex gap-3"><div className="mt-0.5 text-indigo-500"><CheckCircle2 className="w-4 h-4"/></div> Ensure category matching so the right team sees it.</li>
-                      <li className="flex gap-3"><div className="mt-0.5 text-indigo-500"><CheckCircle2 className="w-4 h-4"/></div> Base points should reflect complexity.</li>
-                      <li className="flex gap-3"><div className="mt-0.5 text-indigo-500"><CheckCircle2 className="w-4 h-4"/></div> You can only assign to users currently marked as Available.</li>
-                    </ul>
+                    <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
+                      Have a lot of tasks? Automate your workflow by uploading an Excel or CSV file containing all your tasks, descriptions, and assignments.
+                    </p>
+                    <button 
+                      onClick={() => setActiveTab('bulkImport')}
+                      className="w-full py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm flex items-center justify-center gap-2"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" /> Go to Bulk Import
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
+            {/* Bulk Import Tab */}
+            {activeTab === 'bulkImport' && (
+              <div className="flex flex-col gap-6">
+                <div className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-2 tracking-tight">
+                  <UploadCloud className="text-indigo-600 w-6 h-6" /> Bulk Import Tasks
+                </div>
+                <div className="bg-white p-12 rounded-3xl border-2 border-slate-200 border-dashed shadow-sm flex flex-col items-center justify-center min-h-[400px] hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors">
+                  <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                    <FileSpreadsheet className="w-10 h-10 text-indigo-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-3">Upload Excel or CSV</h3>
+                  <p className="text-sm text-slate-500 mb-8 text-center max-w-md leading-relaxed">
+                    Automate task creation instantly. Ensure your file has columns for <strong>Title</strong>, <strong>Description</strong>, <strong>Category</strong>, <strong>Points</strong>, and <strong>Username</strong>.
+                  </p>
+                  <div className="flex gap-4 items-center">
+                    <label className="cursor-pointer bg-indigo-600 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-0.5 flex items-center gap-2">
+                      <UploadCloud className="w-5 h-5"/> Browse Files
+                      <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} />
+                    </label>
+                    <button 
+                      onClick={downloadTemplate}
+                      className="bg-white text-indigo-600 border-2 border-indigo-100 px-8 py-3.5 rounded-xl font-bold hover:bg-indigo-50 hover:border-indigo-200 transition-all hover:-translate-y-0.5 flex items-center gap-2"
+                    >
+                      <FileSpreadsheet className="w-5 h-5"/> Download Template
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            )}
+            
             {/* User Management Tab */}
             {activeTab === 'userList' && (
               <div>
@@ -544,8 +849,8 @@ export default function AdminDashboard() {
 
                 <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 mb-8">
                   <h3 className="font-bold text-slate-700 mb-4 text-sm uppercase tracking-wider">Onboard New Member</h3>
-                  <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <input type="text" placeholder="Username" required value={createUserForm.username} onChange={e => setCreateUserForm({...createUserForm, username: e.target.value})} className="p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"/>
+                  <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                    <input type="text" placeholder="Username" required value={createUserForm.username} onChange={e => setCreateUserForm({...createUserForm, username: e.target.value})} className="h-12 px-4 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all w-full"/>
                     
                     <div className="relative">
                       <input 
@@ -554,24 +859,32 @@ export default function AdminDashboard() {
                         required 
                         value={createUserForm.password} 
                         onChange={e => setCreateUserForm({...createUserForm, password: e.target.value})} 
-                        className="w-full p-3 pr-10 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"
+                        className="w-full h-12 px-4 pr-10 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all"
                       />
                       <button type="button" tabIndex="-1" onClick={() => setShowCreateUserPassword(!showCreateUserPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition-colors">
                         {showCreateUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
 
-                    <select value={createUserForm.category} onChange={e => setCreateUserForm({...createUserForm, category: e.target.value})} className="p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-800 transition-all">
-                      <option value="Strategy and Growth">Strategy and Growth</option>
-                      <option value="Human Resource Management">Human Resource Management</option>
-                      <option value="Marketing">Marketing</option>
-                      <option value="Content and Designing">Content and Designing</option>
-                      <option value="Technical">Technical</option>
-                      <option value="Expansion strategist">Expansion strategist</option>
-                      <option value="Fund raising poc">Fund raising poc</option>
-                      <option value="Legal compliance executive">Legal compliance executive</option>
-                    </select>
-                    <button type="submit" className="text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 p-3 bg-indigo-600 hover:bg-indigo-700">
+                    <Select 
+                      value={createUserForm.category} 
+                      onValueChange={val => setCreateUserForm({...createUserForm, category: val})}
+                    >
+                      <SelectTrigger className="h-12 px-4 justify-between gap-2 border-2 border-slate-200 rounded-xl text-sm outline-none focus-visible:border-indigo-500 font-medium text-slate-800 transition-all bg-white w-full">
+                        <SelectValue placeholder="Select Category" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <button type="submit" className="h-12 w-full text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700">
                       <PlusCircle className="w-4 h-4"/> Add Member
                     </button>
                   </form>
@@ -580,19 +893,41 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
                     <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Status</label>
-                    <select className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-700 transition-all" value={userAvailabilityFilter} onChange={e => setUserAvailabilityFilter(e.target.value)}>
-                      <option value="all">All Statuses</option>
-                      <option value="available">Available</option>
-                      <option value="unavailable">Unavailable</option>
-                    </select>
+                    <Select value={userAvailabilityFilter} onValueChange={setUserAvailabilityFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Statuses">
+                          {userAvailabilityFilter === 'all' ? 'All Statuses' : 
+                           userAvailabilityFilter === 'available' ? 'Available' :
+                           userAvailabilityFilter === 'unavailable' ? 'Unavailable' : 'All Statuses'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Statuses</SelectItem>
+                        <SelectItem value="available" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Available</SelectItem>
+                        <SelectItem value="unavailable" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Unavailable</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Workload</label>
-                    <select className="w-full p-3 border-2 border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 font-medium text-slate-700 transition-all" value={userAssignmentFilter} onChange={e => setUserAssignmentFilter(e.target.value)}>
-                      <option value="all">All Members</option>
-                      <option value="assigned">Currently Assigned</option>
-                      <option value="unassigned">No Active Tasks</option>
-                    </select>
+                    <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Role</label>
+                    <Select value={userCategoryFilter} onValueChange={setUserCategoryFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Roles">
+                          {userCategoryFilter === 'all' ? 'All Roles' : userCategoryFilter}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Roles</SelectItem>
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -748,20 +1083,24 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Category</Label>
-                <select 
+                <Select 
                   value={editTaskForm.category} 
-                  onChange={e => setEditTaskForm({...editTaskForm, category: e.target.value, assigned_to: ''})}
-                  className="w-full p-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 font-medium text-slate-800"
+                  onValueChange={val => setEditTaskForm({...editTaskForm, category: val, assigned_to: ''})}
                 >
-                  <option value="Strategy and Growth">Strategy and Growth</option>
-                  <option value="Human Resource Management">Human Resource Management</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Content and Designing">Content and Designing</option>
-                  <option value="Technical">Technical</option>
-                  <option value="Expansion strategist">Expansion strategist</option>
-                  <option value="Fund raising poc">Fund raising poc</option>
-                  <option value="Legal compliance executive">Legal compliance executive</option>
-                </select>
+                  <SelectTrigger className="w-full p-2 h-auto justify-between border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 font-medium text-slate-800">
+                    <SelectValue placeholder="Select Category" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl z-[60]">
+                    <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
+                    <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
+                    <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
+                    <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
+                    <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
+                    <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
+                    <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
+                    <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Base Points</Label>
@@ -771,20 +1110,23 @@ export default function AdminDashboard() {
 
             <div className="space-y-2">
               <Label className="font-semibold text-slate-600 uppercase tracking-wider text-xs">Reallocate / Assign To</Label>
-              <select 
-                value={editTaskForm.assigned_to} 
-                onChange={e => setEditTaskForm({...editTaskForm, assigned_to: e.target.value})}
-                className="w-full p-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 font-medium text-slate-800"
+              <Select 
+                value={editTaskForm.assigned_to || "unassigned"} 
+                onValueChange={val => setEditTaskForm({...editTaskForm, assigned_to: val === "unassigned" ? "" : val})}
               >
-                <option value="">Leave Unassigned</option>
-                {/* Include current user if they are assigned but not available, to avoid weird selections */}
-                {selectedTaskForEdit?.assigned_user_id && !availableUsersForEditTask.find(u => u.id === selectedTaskForEdit.assigned_user_id) && (
-                   <option value={selectedTaskForEdit.assigned_user_id}>
-                     Current: {selectedTaskForEdit.assignedUserName}
-                   </option>
-                )}
-                {availableUsersForEditTask.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-              </select>
+                <SelectTrigger className="w-full p-2 h-auto justify-between border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 font-medium text-slate-800">
+                  <SelectValue placeholder="Leave Unassigned" />
+                </SelectTrigger>
+                <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
+                  <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Leave Unassigned</SelectItem>
+                  {selectedTaskForEdit?.assigned_user_id && !availableUsersForEditTask.find(u => u.id === selectedTaskForEdit.assigned_user_id) && (
+                     <SelectItem value={selectedTaskForEdit.assigned_user_id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">
+                       Current: {selectedTaskForEdit.assignedUserName}
+                     </SelectItem>
+                  )}
+                  {availableUsersForEditTask.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -800,6 +1142,113 @@ export default function AdminDashboard() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+      {/* Verify Task Modal */}
+      {verifyModalOpen && verifyingTask && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <h2 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                <CheckCircle2 className="w-6 h-6 text-indigo-600" /> Verify Submission
+              </h2>
+              <button 
+                onClick={() => setVerifyModalOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto bg-slate-50">
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-slate-800">{verifyingTask.title}</h3>
+                <p className="text-slate-500 mt-1">{verifyingTask.description}</p>
+                <div className="flex gap-4 mt-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full">
+                    {verifyingTask.points} Base Points
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-200 text-slate-700 font-bold text-xs rounded-full">
+                    <User className="w-3.5 h-3.5"/> 
+                    {users.find(u => u.id === verifyingTask.assigned_user_id)?.username || 'Unknown'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-purple-50/50 border border-purple-100 rounded-2xl p-6 mb-8">
+                <strong className="flex items-center gap-2 text-purple-800 mb-2 text-sm uppercase tracking-wider font-bold">
+                  <MessageSquare className="w-4 h-4" /> User Remarks
+                </strong>
+                <p className="text-purple-900/90 font-medium whitespace-pre-wrap">{verifyingTask.remarks || "No remarks provided by the user."}</p>
+              </div>
+
+              <div>
+                <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Bonus Points (Optional)</label>
+                <input 
+                  type="number" min="0" max="100" placeholder="0" 
+                  value={verifyBonusPoints} onChange={e => setVerifyBonusPoints(e.target.value)}
+                  className="w-full p-3.5 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus:border-indigo-500 focus:shadow-[0_0_0_3px_rgba(79,70,229,0.1)] transition-all font-medium text-slate-800"
+                />
+                <p className="text-xs text-slate-400 mt-2 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Leave empty or 0 if no bonus should be awarded.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white">
+              <button 
+                onClick={() => setVerifyModalOpen(false)}
+                className="px-6 py-3 font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitVerification}
+                className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Approve & Complete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+          {/* End Task Modal */}
+      {endTaskModalOpen && endingTask && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-rose-50">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-rose-800 tracking-tight">End Task</h2>
+                <p className="text-sm text-rose-600 font-medium">This action cannot be undone.</p>
+              </div>
+            </div>
+            
+            <div className="p-6 bg-white">
+              <p className="text-slate-600 font-medium text-center">
+                Are you sure you want to end <strong className="text-slate-800">"{endingTask.title}"</strong>? 
+                <br/><br/>
+                It will be marked as <strong className="text-rose-600 uppercase text-xs tracking-wide bg-rose-50 px-2 py-1 rounded">failed</strong> and the user will receive <strong className="text-slate-800">0 points</strong>.
+              </p>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
+              <button 
+                onClick={() => setEndTaskModalOpen(false)}
+                className="px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitEndTask}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4" /> End Task Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }
