@@ -43,7 +43,8 @@ export async function getUsers() {
         u.category,
         COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.points ELSE 0 END), 0) as "basePoints",
         COALESCE(SUM(t.bonus_points), 0) as "bonusPoints",
-        COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.points ELSE 0 END), 0) + COALESCE(SUM(t.bonus_points), 0) as "totalScore"
+        COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.points ELSE 0 END), 0) + COALESCE(SUM(t.bonus_points), 0) as "totalScore",
+        COUNT(CASE WHEN t.status IN ('assigned', 'to_be_reviewed') THEN 1 END) as "activeTasks"
       FROM users u 
       LEFT JOIN tasks t ON u.id = t.assigned_user_id 
       WHERE u.organization_id = ${orgId}
@@ -61,7 +62,8 @@ export async function getUsers() {
         category: u.category,
         basePoints: Number(u.basePoints ?? u.basepoints ?? 0),
         bonusPoints: Number(u.bonusPoints ?? u.bonuspoints ?? 0),
-        totalScore: Number(u.totalScore ?? u.totalscore ?? 0)
+        totalScore: Number(u.totalScore ?? u.totalscore ?? 0),
+        active_tasks: Number(u.activeTasks ?? u.activetasks ?? 0)
       })) 
     };
   } catch (error) {
@@ -105,70 +107,7 @@ export async function getLeaderboard() {
   }
 }
 
-export async function getAssignmentStatus() {
-  try {
-    const orgId = await getOrgId();
-    const usersRaw = await prisma.$queryRaw`
-      SELECT 
-        u.id, 
-        u.username, 
-        u.category, 
-        u.availability,
-        CASE 
-          WHEN EXISTS (
-            SELECT 1 FROM tasks 
-            WHERE assigned_user_id = u.id AND status != 'completed' AND status != 'failed'
-          ) THEN 'assigned'
-          ELSE 'unassigned'
-        END as assignment_status,
-        (SELECT COUNT(*) 
-         FROM tasks 
-         WHERE assigned_user_id = u.id AND status = 'completed') as completed_tasks
-      FROM users u
-      WHERE u.role = 'user' AND u.organization_id = ${orgId}
-    `;
-    
-    return { 
-      success: true, 
-      users: usersRaw.map(u => ({
-        id: u.id,
-        username: u.username,
-        category: u.category,
-        availability: u.availability,
-        assignment_status: u.assignment_status,
-        completed_tasks: Number(u.completed_tasks)
-      })) 
-    };
-  } catch (error) {
-    console.error('Error getting assignment status:', error);
-    return { error: error.message === 'Unauthorized' ? 'Unauthorized' : 'Server error' };
-  }
-}
 
-export async function getAvailableUsersByCategory(category) {
-  try {
-    const orgId = await getOrgId();
-    const users = await prisma.user.findMany({
-      where: {
-        category,
-        availability: 'available',
-        role: 'user',
-        organization_id: orgId
-      },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        category: true,
-        availability: true
-      }
-    });
-    return { success: true, users };
-  } catch (error) {
-    console.error('Error getting available users:', error);
-    return { error: error.message === 'Unauthorized' ? 'Unauthorized' : 'Server error' };
-  }
-}
 
 export async function createUser(username, password, role, category) {
   try {

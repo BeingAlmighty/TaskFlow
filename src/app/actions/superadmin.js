@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_development_only';
 
-export async function checkSuperAdmin() {
+async function checkSuperAdmin() {
   const cookieStore = await cookies();
   const token = cookieStore.get('auth_token')?.value;
 

@@ -78,7 +78,7 @@ export async function getTasks() {
   }
 }
 
-export async function getTaskById(taskId) {
+async function getTaskById(taskId) {
   try {
     const orgId = await getOrgId();
     const task = await prisma.task.findFirst({
@@ -407,7 +407,16 @@ export async function submitTaskForReview(taskId, remarks) {
     
     if (!task) return { error: 'Task not found' };
 
-    const newRemarks = !task.remarks ? data.remarks : `${task.remarks} | ${data.remarks}`;
+    let newRemarks;
+    if (!task.remarks) {
+      newRemarks = data.remarks;
+    } else {
+      if (task.remarks.includes(data.remarks) && data.remarks === 'Task submitted for review by user') {
+        newRemarks = task.remarks;
+      } else {
+        newRemarks = `${task.remarks} | ${data.remarks}`;
+      }
+    }
 
     await prisma.task.update({
       where: { id: task.id },

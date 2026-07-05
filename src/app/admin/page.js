@@ -101,6 +101,7 @@ export default function AdminDashboard() {
   
   const [userAvailabilityFilter, setUserAvailabilityFilter] = useState('all');
   const [userCategoryFilter, setUserCategoryFilter] = useState('all');
+  const [userWorkloadFilter, setUserWorkloadFilter] = useState('all');
 
   // Form states
   const [createTaskForm, setCreateTaskForm] = useState({ title: '', category: 'Strategy and Growth', description: '', points: 10, assigned_to: '' });
@@ -162,11 +163,17 @@ export default function AdminDashboard() {
   const filteredUsers = users.filter(user => {
     const matchAvail = userAvailabilityFilter === 'all' || user.availability === userAvailabilityFilter;
     const matchCategory = userCategoryFilter === 'all' || user.category === userCategoryFilter;
-    return matchAvail && matchCategory;
+    const matchWorkload = userWorkloadFilter === 'all' || 
+                          (userWorkloadFilter === 'free' && user.active_tasks === 0) || 
+                          (userWorkloadFilter === 'on_task' && user.active_tasks > 0);
+    return matchAvail && matchCategory && matchWorkload;
   });
 
   // Available Users for Assignment
-  const availableUsersForTask = users.filter(u => u.availability === 'available' && u.category === createTaskForm.category);
+  const availableUsersForTask = users.filter(u => 
+    (u.availability === 'available' && u.category === createTaskForm.category) || 
+    (createTaskForm.assigned_to && u.id.toString() === createTaskForm.assigned_to)
+  );
   const availableUsersForEditTask = users.filter(u => u.availability === 'available' && u.category === editTaskForm.category);
 
   // Task Actions
@@ -493,7 +500,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Dashboard Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 shadow-sm border border-slate-200/70 flex items-center gap-4 transition-all hover:shadow-md">
               <div className="w-12 h-12 rounded-full flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100/50">
                 <ClipboardList className="w-5 h-5" />
@@ -511,6 +518,18 @@ export default function AdminDashboard() {
               <div>
                 <div className="text-sm font-medium text-slate-500">Active Users</div>
                 <div className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">{stats.activeUsers}</div>
+              </div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-5 shadow-sm border border-slate-200/70 flex items-center gap-4 transition-all hover:shadow-md">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center bg-cyan-50 text-cyan-600 border border-cyan-100/50">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-slate-500">Ready for Work</div>
+                <div className="text-2xl font-bold text-slate-800 leading-tight tracking-tight">
+                  {users.filter(u => u.role === 'user' && u.active_tasks === 0 && u.availability === 'available').length}
+                </div>
               </div>
             </div>
 
@@ -549,12 +568,12 @@ export default function AdminDashboard() {
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
-                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Tasks</SelectItem>
-                        <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Unassigned</SelectItem>
-                        <SelectItem value="assigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Assigned</SelectItem>
-                        <SelectItem value="to_be_reviewed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Submitted (Pending Review)</SelectItem>
-                        <SelectItem value="completed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Completed</SelectItem>
-                        <SelectItem value="failed" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Failed/Cancelled</SelectItem>
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Tasks</SelectItem>
+                        <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg">Unassigned</SelectItem>
+                        <SelectItem value="assigned" className="cursor-pointer font-medium py-2 rounded-lg">Assigned</SelectItem>
+                        <SelectItem value="to_be_reviewed" className="cursor-pointer font-medium py-2 rounded-lg">Submitted (Pending Review)</SelectItem>
+                        <SelectItem value="completed" className="cursor-pointer font-medium py-2 rounded-lg">Completed</SelectItem>
+                        <SelectItem value="failed" className="cursor-pointer font-medium py-2 rounded-lg">Failed/Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -563,12 +582,12 @@ export default function AdminDashboard() {
                     <Select value={taskUserFilter} onValueChange={setTaskUserFilter}>
                       <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
                         <SelectValue placeholder="All Users">
-                          {taskUserFilter === 'all' ? 'All Users' : users.find(u => u.id === taskUserFilter)?.username || 'All Users'}
+                          {taskUserFilter === 'all' ? 'All Users' : users.find(u => u.id.toString() === taskUserFilter)?.username || 'All Users'}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
-                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Users</SelectItem>
-                        {users.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Users</SelectItem>
+                        {users.map(u => <SelectItem key={u.id} value={u.id.toString()} className="cursor-pointer font-medium py-2 rounded-lg">{u.username}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -581,15 +600,15 @@ export default function AdminDashboard() {
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
-                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Categories</SelectItem>
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Categories</SelectItem>
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -602,7 +621,7 @@ export default function AdminDashboard() {
                         <tr className="bg-slate-50/80 border-b border-slate-200">
                           <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Task Details</th>
                           <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Category</th>
-                          <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Assigned To</th>
+                          <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Assignee</th>
                           <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Status</th>
                           <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Points</th>
                           <th className="p-4 font-semibold text-slate-600 text-sm uppercase tracking-wider">Actions</th>
@@ -700,14 +719,14 @@ export default function AdminDashboard() {
                             <SelectValue placeholder="Select Category" />
                           </SelectTrigger>
                           <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                            <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
-                            <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
-                            <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
-                            <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
-                            <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
-                            <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
-                            <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
-                            <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                            <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
+                            <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
+                            <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
+                            <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
+                            <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
+                            <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
+                            <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
+                            <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -722,15 +741,19 @@ export default function AdminDashboard() {
                     <div>
                       <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Assign To (Must be available)</label>
                       <Select 
-                        value={createTaskForm.assigned_to || "Unassigned"} 
-                        onValueChange={val => setCreateTaskForm({...createTaskForm, assigned_to: val === "Unassigned" ? "" : val})}
+                        value={createTaskForm.assigned_to || "unassigned"} 
+                        onValueChange={val => setCreateTaskForm({...createTaskForm, assigned_to: val === "unassigned" ? "" : val})}
                       >
                         <SelectTrigger className="w-full p-3.5 h-auto justify-between gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-800">
-                          <SelectValue placeholder="Leave Unassigned" />
+                          <SelectValue placeholder="Leave Unassigned">
+                            {createTaskForm.assigned_to && createTaskForm.assigned_to !== 'unassigned'
+                              ? users.find(u => u.id.toString() === createTaskForm.assigned_to)?.username || 'Leave Unassigned'
+                              : "Leave Unassigned"}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                          <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Leave Unassigned</SelectItem>
-                          {availableUsersForTask.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                          <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg">Leave Unassigned</SelectItem>
+                          {availableUsersForTask.map(u => <SelectItem key={u.id} value={u.id.toString()} className="cursor-pointer font-medium py-2 rounded-lg">{u.username}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       {availableUsersForTask.length === 0 && <p className="text-xs font-semibold text-rose-500 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> No available users in this category.</p>}
@@ -833,14 +856,14 @@ export default function AdminDashboard() {
                         <SelectValue placeholder="Select Category" />
                       </SelectTrigger>
                       <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
                       </SelectContent>
                     </Select>
                     <button type="submit" className="h-12 w-full text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700">
@@ -849,7 +872,7 @@ export default function AdminDashboard() {
                   </form>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                   <div>
                     <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Status</label>
                     <Select value={userAvailabilityFilter} onValueChange={setUserAvailabilityFilter}>
@@ -861,9 +884,9 @@ export default function AdminDashboard() {
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
-                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Statuses</SelectItem>
-                        <SelectItem value="available" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Available</SelectItem>
-                        <SelectItem value="unavailable" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Unavailable</SelectItem>
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Statuses</SelectItem>
+                        <SelectItem value="available" className="cursor-pointer font-medium py-2 rounded-lg">Available</SelectItem>
+                        <SelectItem value="unavailable" className="cursor-pointer font-medium py-2 rounded-lg">Unavailable</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -876,15 +899,32 @@ export default function AdminDashboard() {
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
-                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">All Roles</SelectItem>
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Roles</SelectItem>
+                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
+                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
+                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
+                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
+                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
+                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
+                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
+                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block mb-2 font-semibold text-slate-600 text-xs uppercase tracking-wider">Filter by Workload</label>
+                    <Select value={userWorkloadFilter} onValueChange={setUserWorkloadFilter}>
+                      <SelectTrigger className="w-full p-3 h-auto justify-center gap-2 border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 focus-visible:ring-[3px] focus-visible:ring-indigo-500/10 transition-all font-medium text-slate-700">
+                        <SelectValue placeholder="All Workloads">
+                          {userWorkloadFilter === 'all' ? 'All Workloads' : 
+                           userWorkloadFilter === 'free' ? 'Free' :
+                           userWorkloadFilter === 'on_task' ? 'On Task' : 'All Workloads'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl">
+                        <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Workloads</SelectItem>
+                        <SelectItem value="free" className="cursor-pointer font-medium py-2 rounded-lg">Free</SelectItem>
+                        <SelectItem value="on_task" className="cursor-pointer font-medium py-2 rounded-lg">On Task</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -916,16 +956,20 @@ export default function AdminDashboard() {
                                 </span>
                               </td>
                               <td className="p-4">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${u.active_tasks > 0 ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'text-slate-500'}`}>
-                                  {u.active_tasks} Active
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${u.active_tasks > 0 ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
+                                  {u.active_tasks > 0 ? 'On Task' : 'Free'}
                                 </span>
                               </td>
                               <td className="p-4">
                                 <div className="flex flex-wrap gap-2">
                                   <button 
-                                    onClick={() => handleToggleAvailability(u.id, u.availability)}
-                                    className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50"
-                                  ><PlayCircle className="w-3.5 h-3.5"/> Toggle</button>
+                                    onClick={() => {
+                                      setCreateTaskForm({ ...createTaskForm, category: u.category || 'Strategy and Growth', assigned_to: u.id.toString() });
+                                      setActiveTab('createTask');
+                                      window.scrollTo(0, 0);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+                                  ><PlusCircle className="w-3.5 h-3.5"/> Give Task</button>
                                   <button 
                                     onClick={() => { setSelectedUserForPassword(u); setChangePasswordModalOpen(true); }}
                                     className="px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
@@ -1092,14 +1136,14 @@ export default function AdminDashboard() {
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl z-[60]">
-                    <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Strategy and Growth</SelectItem>
-                    <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Human Resource Management</SelectItem>
-                    <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Marketing</SelectItem>
-                    <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Content and Designing</SelectItem>
-                    <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Technical</SelectItem>
-                    <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Expansion strategist</SelectItem>
-                    <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Fund raising poc</SelectItem>
-                    <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Legal compliance executive</SelectItem>
+                    <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
+                    <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
+                    <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
+                    <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
+                    <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
+                    <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
+                    <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
+                    <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1116,16 +1160,20 @@ export default function AdminDashboard() {
                 onValueChange={val => setEditTaskForm({...editTaskForm, assigned_to: val === "unassigned" ? "" : val})}
               >
                 <SelectTrigger className="w-full p-2 h-auto justify-between border-2 border-slate-200 rounded-xl text-sm bg-white outline-none focus-visible:border-indigo-500 font-medium text-slate-800">
-                  <SelectValue placeholder="Leave Unassigned" />
+                  <SelectValue placeholder="Leave Unassigned">
+                    {editTaskForm.assigned_to && editTaskForm.assigned_to !== 'unassigned'
+                      ? users.find(u => u.id.toString() === editTaskForm.assigned_to)?.username || 'Leave Unassigned'
+                      : "Leave Unassigned"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                  <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">Leave Unassigned</SelectItem>
+                  <SelectItem value="unassigned" className="cursor-pointer font-medium py-2 rounded-lg">Leave Unassigned</SelectItem>
                   {selectedTaskForEdit?.assigned_user_id && !availableUsersForEditTask.find(u => u.id === selectedTaskForEdit.assigned_user_id) && (
-                     <SelectItem value={selectedTaskForEdit.assigned_user_id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">
+                     <SelectItem value={selectedTaskForEdit.assigned_user_id.toString()} className="cursor-pointer font-medium py-2 rounded-lg">
                        Current: {selectedTaskForEdit.assignedUserName}
                      </SelectItem>
                   )}
-                  {availableUsersForEditTask.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer font-medium py-2 rounded-lg hover:bg-slate-50 focus:bg-indigo-50 focus:text-indigo-700">{u.username}</SelectItem>)}
+                  {availableUsersForEditTask.map(u => <SelectItem key={u.id} value={u.id.toString()} className="cursor-pointer font-medium py-2 rounded-lg">{u.username}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
