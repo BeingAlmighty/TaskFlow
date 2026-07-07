@@ -115,7 +115,7 @@ export async function createUser(username, password, role, category) {
     
     const parsed = createUserSchema.safeParse({ username, password, role, category });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -154,7 +154,7 @@ export async function updateUserAvailability(userId, availability) {
     
     const parsed = updateUserAvailabilitySchema.safeParse({ userId, availability });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -178,7 +178,7 @@ export async function updateUserPassword(userId, password) {
     
     const parsed = updateUserPasswordSchema.safeParse({ userId, password });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;

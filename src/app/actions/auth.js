@@ -47,7 +47,7 @@ export async function login(username, password) {
   try {
     const parsed = loginSchema.safeParse({ username, password });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
 
     const { username: validUsername, password: validPassword } = parsed.data;
@@ -172,7 +172,7 @@ export async function changePasswordWithOld(username, oldPassword, newPassword) 
   try {
     const parsed = changePasswordSchema.safeParse({ username, oldPassword, newPassword });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
 
     const { username: validUsername, oldPassword: validOldPassword, newPassword: validNewPassword } = parsed.data;
@@ -215,7 +215,7 @@ export async function registerOrganization(orgName, adminUsername, adminPassword
   try {
     const parsed = registerOrgSchema.safeParse({ orgName, adminUsername, adminPassword });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
 
     const { orgName: validOrgName, adminUsername: validAdminUsername, adminPassword: validAdminPassword } = parsed.data;

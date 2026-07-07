@@ -301,7 +301,8 @@ export default function AdminDashboard() {
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
-    const res = await createTask(createTaskForm.title, createTaskForm.description, createTaskForm.category, createTaskForm.points, createTaskForm.assigned_to);
+    const assignedId = createTaskForm.assigned_to ? parseInt(createTaskForm.assigned_to, 10) : null;
+    const res = await createTask(createTaskForm.title, createTaskForm.description, createTaskForm.category, createTaskForm.points, assignedId);
     if (res.error) toast.error(res.error);
     else {
       toast.success('Task created successfully!');

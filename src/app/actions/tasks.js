@@ -135,7 +135,7 @@ export async function createTask(title, description, category, points, assignedU
     
     const parsed = createTaskSchema.safeParse({ title, description, category, points, assignedUserId });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -234,7 +234,7 @@ export async function updateTask(taskId, title, description, category, points, a
     
     const parsed = createTaskSchema.safeParse({ title, description, category, points, assignedUserId });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -282,7 +282,7 @@ export async function assignPoints(taskId, points, bonusPoints = 0, remarks = ''
     });
     
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -324,7 +324,7 @@ export async function addBonusPoints(taskId, bonusPoints, remarks = '') {
     });
     
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -367,7 +367,7 @@ export async function endTaskWithoutPoints(taskId, status = 'failed', remarks = 
     
     const parsed = endTaskSchema.safeParse({ taskId, status, remarks });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
@@ -396,7 +396,7 @@ export async function submitTaskForReview(taskId, remarks) {
     
     const parsed = submitReviewSchema.safeParse({ taskId, remarks });
     if (!parsed.success) {
-      return { error: parsed.error.errors[0].message };
+      return { error: parsed.error.issues[0].message };
     }
     
     const data = parsed.data;
