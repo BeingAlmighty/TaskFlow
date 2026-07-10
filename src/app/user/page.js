@@ -379,7 +379,7 @@ export default function UserDashboard() {
 
       {/* Submit Task Modal */}
       <Dialog open={submitModalOpen} onOpenChange={setSubmitModalOpen}>
-        <DialogContent className="sm:max-w-[450px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-indigo-800 font-bold tracking-tight text-xl"><Send className="w-5 h-5 text-indigo-500" /> Submit Assignment</DialogTitle>
             <DialogDescription className="font-medium text-slate-500">Send your work to the admin for review.</DialogDescription>
@@ -388,11 +388,11 @@ export default function UserDashboard() {
             <div className="space-y-2">
               <Label className="font-bold text-slate-600 uppercase tracking-wider text-xs">Remarks (Optional)</Label>
               <Textarea 
-                rows={4} 
+                rows={6} 
                 placeholder="Add any notes about your completed work..." 
                 value={submitForm.remarks} 
                 onChange={e => setSubmitForm({...submitForm, remarks: e.target.value})} 
-                className="resize-y border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium"
+                className="resize-y border-2 border-slate-200 rounded-xl focus-visible:ring-indigo-500 font-medium break-all whitespace-pre-wrap"
               />
             </div>
             <DialogFooter className="flex flex-col sm:flex-row gap-3 mt-4">
