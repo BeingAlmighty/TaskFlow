@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { logout } from '@/app/actions/auth';
 import { useAuth } from '@/components/AuthProvider';
 import { 
-  ClipboardList, PlusCircle, Users, Trophy, Shield, LogOut, 
-  Clock, CheckCircle2, AlertCircle, Eye, EyeOff, Key, Send, Edit, PlayCircle, Star, Sparkles, Menu, ChevronLeft, ChevronDown, Search, Bell, UploadCloud, FileSpreadsheet, X, User, MessageSquare
+  ClipboardList, PlusCircle, Users, Trophy, Shield, LogOut,
+  Clock, CheckCircle2, AlertCircle, Eye, EyeOff, Key, Send, Edit, PlayCircle, Star, Sparkles, Menu, ChevronLeft, ChevronDown, Search, Bell, UploadCloud, FileSpreadsheet, X, User, MessageSquare, Settings
 } from 'lucide-react';
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
@@ -29,6 +29,7 @@ import {
 import { 
   getUsers, createUser, getDashboardStats, updateUserPassword, updateUserAvailability, getLeaderboard
 } from '../actions/users';
+import { getOrgCategories, updateOrgCategories } from '../actions/organizations';
 import { 
   useTasks, useUsers, useLeaderboard, useDashboardStats 
 } from '@/lib/hooks';
@@ -82,6 +83,11 @@ export default function AdminDashboard() {
   const [taskUserFilter, setTaskUserFilter] = useState('all');
   const [taskCategoryFilter, setTaskCategoryFilter] = useState('all');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  
+  // Dynamic Categories
+  const [validCategories, setValidCategories] = useState(['Strategy and Growth', 'Development', 'Marketing', 'Design', 'Finance', 'HR']);
+  const [manageRolesModalOpen, setManageRolesModalOpen] = useState(false);
+  const [manageRolesForm, setManageRolesForm] = useState('');
   const searchRef = useRef(null);
   const [dropdownRect, setDropdownRect] = useState(null);
 
@@ -142,6 +148,47 @@ export default function AdminDashboard() {
     mutateUsers();
     mutateLeaderboard();
     mutateStats();
+    if (user?.role === 'admin') {
+      const res = await getOrgCategories();
+      if (res.success && res.categories && res.categories.length > 0) {
+        setValidCategories(res.categories);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (user && user.role === 'admin') {
+      getOrgCategories().then(res => {
+        if (res.success && res.categories && res.categories.length > 0) setValidCategories(res.categories);
+      });
+    }
+  }, [user]);
+
+  const handleAddRole = async () => {
+    if(!manageRolesForm.trim()) return;
+    const newCat = manageRolesForm.trim();
+    if(validCategories.includes(newCat)) return toast.error("Role already exists");
+    
+    const newCategories = [...validCategories, newCat];
+    const res = await updateOrgCategories(newCategories);
+    if(res.success) {
+      setValidCategories(res.categories);
+      setManageRolesForm('');
+      toast.success("Role added!");
+    } else {
+      toast.error(res.error);
+    }
+  };
+
+  const handleDeleteRole = async (catToDelete) => {
+    const newCategories = validCategories.filter(c => c !== catToDelete);
+    const res = await updateOrgCategories(newCategories);
+    if(res.success) {
+      setValidCategories(res.categories);
+      toast.success("Role deleted!");
+    } else {
+      toast.error(res.error);
+    }
   };
 
   const handleLogout = async () => {
@@ -602,14 +649,8 @@ export default function AdminDashboard() {
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
                         <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Categories</SelectItem>
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                        {validCategories.map(cat => <SelectItem key={cat} value={cat} className="cursor-pointer font-medium py-2 rounded-lg">{cat}</SelectItem>)}
+                        <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManageRolesModalOpen(true); }} className="p-2 mt-1 border-t border-slate-100 flex items-center justify-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-b-lg gap-2"><Settings className="w-4 h-4" /> Manage Roles</div>
                       </SelectContent>
                     </Select>
                   </div>
@@ -720,14 +761,8 @@ export default function AdminDashboard() {
                             <SelectValue placeholder="Select Category" />
                           </SelectTrigger>
                           <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                            <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
-                            <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
-                            <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
-                            <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
-                            <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
-                            <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
-                            <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
-                            <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                            {validCategories.map(cat => <SelectItem key={cat} value={cat} className="cursor-pointer font-medium py-2 rounded-lg">{cat}</SelectItem>)}
+                            <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManageRolesModalOpen(true); }} className="p-2 mt-1 border-t border-slate-100 flex items-center justify-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-b-lg gap-2"><Settings className="w-4 h-4" /> Manage Roles</div>
                           </SelectContent>
                         </Select>
                       </div>
@@ -857,14 +892,8 @@ export default function AdminDashboard() {
                         <SelectValue placeholder="Select Category" />
                       </SelectTrigger>
                       <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto z-[60]">
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                        {validCategories.map(cat => <SelectItem key={cat} value={cat} className="cursor-pointer font-medium py-2 rounded-lg">{cat}</SelectItem>)}
+                        <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManageRolesModalOpen(true); }} className="p-2 mt-1 border-t border-slate-100 flex items-center justify-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-b-lg gap-2"><Settings className="w-4 h-4" /> Manage Roles</div>
                       </SelectContent>
                     </Select>
                     <button type="submit" className="h-12 w-full text-white rounded-xl font-bold hover:-translate-y-0.5 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700">
@@ -901,14 +930,8 @@ export default function AdminDashboard() {
                       </SelectTrigger>
                       <SelectContent className="bg-white/80 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl max-h-60 overflow-y-auto">
                         <SelectItem value="all" className="cursor-pointer font-medium py-2 rounded-lg">All Roles</SelectItem>
-                        <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
-                        <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
-                        <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
-                        <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
-                        <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
-                        <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
-                        <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
-                        <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                        {validCategories.map(cat => <SelectItem key={cat} value={cat} className="cursor-pointer font-medium py-2 rounded-lg">{cat}</SelectItem>)}
+                        <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManageRolesModalOpen(true); }} className="p-2 mt-1 border-t border-slate-100 flex items-center justify-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-b-lg gap-2"><Settings className="w-4 h-4" /> Manage Roles</div>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1137,14 +1160,8 @@ export default function AdminDashboard() {
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent className="bg-white/95 backdrop-blur-xl border border-slate-100 shadow-xl rounded-xl z-[60]">
-                    <SelectItem value="Strategy and Growth" className="cursor-pointer font-medium py-2 rounded-lg">Strategy and Growth</SelectItem>
-                    <SelectItem value="Human Resource Management" className="cursor-pointer font-medium py-2 rounded-lg">Human Resource Management</SelectItem>
-                    <SelectItem value="Marketing" className="cursor-pointer font-medium py-2 rounded-lg">Marketing</SelectItem>
-                    <SelectItem value="Content and Designing" className="cursor-pointer font-medium py-2 rounded-lg">Content and Designing</SelectItem>
-                    <SelectItem value="Technical" className="cursor-pointer font-medium py-2 rounded-lg">Technical</SelectItem>
-                    <SelectItem value="Expansion strategist" className="cursor-pointer font-medium py-2 rounded-lg">Expansion strategist</SelectItem>
-                    <SelectItem value="Fund raising poc" className="cursor-pointer font-medium py-2 rounded-lg">Fund raising poc</SelectItem>
-                    <SelectItem value="Legal compliance executive" className="cursor-pointer font-medium py-2 rounded-lg">Legal compliance executive</SelectItem>
+                    {validCategories.map(cat => <SelectItem key={cat} value={cat} className="cursor-pointer font-medium py-2 rounded-lg">{cat}</SelectItem>)}
+                    <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManageRolesModalOpen(true); }} className="p-2 mt-1 border-t border-slate-100 flex items-center justify-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-b-lg gap-2"><Settings className="w-4 h-4" /> Manage Roles</div>
                   </SelectContent>
                 </Select>
               </div>
@@ -1299,6 +1316,40 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+      
+      {/* Manage Roles Modal */}
+      <Dialog open={manageRolesModalOpen} onOpenChange={setManageRolesModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Manage Organization Roles</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex gap-2">
+              <Input 
+                placeholder="New role name..." 
+                value={manageRolesForm} 
+                onChange={(e) => setManageRolesForm(e.target.value)} 
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if(e.key === 'Enter') handleAddRole();
+                }}
+              />
+              <button onClick={handleAddRole} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-indigo-700">Add</button>
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-2 mt-4">
+              {validCategories.map(cat => (
+                <div key={cat} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <span className="text-sm font-medium text-slate-700">{cat}</span>
+                  <button onClick={() => handleDeleteRole(cat)} className="text-slate-400 hover:text-red-500 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {validCategories.length === 0 && <p className="text-sm text-slate-500 text-center py-4">No custom roles defined.</p>}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 </div>
   );
 }

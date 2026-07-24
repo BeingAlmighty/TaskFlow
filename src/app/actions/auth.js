@@ -26,7 +26,8 @@ const changePasswordSchema = z.object({
 const registerOrgSchema = z.object({
   orgName: z.string().min(1, 'Organization name is required'),
   adminUsername: z.string().min(1, 'Admin username is required'),
-  adminPassword: z.string().min(8, 'Admin password must be at least 8 characters long')
+  adminPassword: z.string().min(8, 'Admin password must be at least 8 characters long'),
+  roles: z.string().optional()
 });
 
 // In-memory rate limiter for login
@@ -211,20 +212,28 @@ export async function changePasswordWithOld(username, oldPassword, newPassword) 
   }
 }
 
-export async function registerOrganization(orgName, adminUsername, adminPassword) {
+export async function registerOrganization(orgName, adminUsername, adminPassword, roles) {
   try {
-    const parsed = registerOrgSchema.safeParse({ orgName, adminUsername, adminPassword });
+    const parsed = registerOrgSchema.safeParse({ orgName, adminUsername, adminPassword, roles });
     if (!parsed.success) {
       return { error: parsed.error.issues[0].message };
     }
 
-    const { orgName: validOrgName, adminUsername: validAdminUsername, adminPassword: validAdminPassword } = parsed.data;
+    const { orgName: validOrgName, adminUsername: validAdminUsername, adminPassword: validAdminPassword, roles: validRoles } = parsed.data;
 
     const hashedPassword = await bcrypt.hash(validAdminPassword, 10);
 
+    let initialCategories = [];
+    if (validRoles && validRoles.trim()) {
+      initialCategories = validRoles.split(',').map(r => r.trim()).filter(Boolean);
+    }
+
     await prisma.$transaction(async (tx) => {
       const org = await tx.organization.create({
-        data: { name: validOrgName }
+        data: { 
+          name: validOrgName,
+          ...(initialCategories.length > 0 ? { categories: initialCategories } : {})
+        }
       });
       await tx.user.create({
         data: {

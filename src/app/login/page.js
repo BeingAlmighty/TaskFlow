@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { login, changePasswordWithOld, registerOrganization } from '@/app/actions/auth';
 import { toast } from 'sonner';
-import { Loader2, Eye, EyeOff, User, Lock, Building } from 'lucide-react';
+import { Loader2, Eye, EyeOff, User, Lock, Building, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -90,13 +90,27 @@ export default function LoginPage() {
   const [roAdminUsername, setRoAdminUsername] = useState('');
   const [roAdminPassword, setRoAdminPassword] = useState('');
   const [showRoAdminPassword, setShowRoAdminPassword] = useState(false);
+  const [roRoles, setRoRoles] = useState([]);
+  const [newRole, setNewRole] = useState('');
+
+  const handleAddRole = (e) => {
+    e.preventDefault();
+    if (newRole.trim() && !roRoles.includes(newRole.trim())) {
+      setRoRoles([...roRoles, newRole.trim()]);
+      setNewRole('');
+    }
+  };
+
+  const handleRemoveRole = (roleToRemove) => {
+    setRoRoles(roRoles.filter(role => role !== roleToRemove));
+  };
 
   const handleRegisterOrg = async (e) => {
     e.preventDefault();
     setIsRegisteringOrg(true);
     
     try {
-      const res = await registerOrganization(roOrgName, roAdminUsername, roAdminPassword);
+      const res = await registerOrganization(roOrgName, roAdminUsername, roAdminPassword, roRoles.join(','));
       if (res.error) {
         toast.error(res.error);
       } else {
@@ -104,6 +118,8 @@ export default function LoginPage() {
         setRoOrgName('');
         setRoAdminUsername('');
         setRoAdminPassword('');
+        setRoRoles([]);
+        setNewRole('');
         setUsername(roAdminUsername);
         setPassword(roAdminPassword);
         setView('login');
@@ -478,6 +494,70 @@ export default function LoginPage() {
                       >
                         {showRoAdminPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
                       </button>
+                    </motion.div>
+
+                    <motion.div variants={formItemVariants} className="space-y-3">
+                      <div className="relative flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            id="newRole"
+                            value={newRole}
+                            onChange={(e) => setNewRole(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddRole(e);
+                              }
+                            }}
+                            disabled={isRegisteringOrg}
+                            placeholder=" "
+                            className="peer w-full h-[54px] pl-12 pr-4 border-none rounded-full text-[15px] transition-all bg-slate-100/70 focus:bg-indigo-50 focus:ring-[3px] focus:ring-indigo-600/20 outline-none font-medium text-slate-900"
+                          />
+                          <Building className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-[18px] h-[18px] z-10 transition-colors peer-focus:text-indigo-600 pointer-events-none" />
+                          <label
+                            htmlFor="newRole"
+                            className={`absolute bg-white px-2 rounded-full pointer-events-none transition-all duration-200 font-medium z-10
+                              ${newRole ? 'top-[-8px] left-5 text-[12px] text-slate-500' : 'top-1/2 -translate-y-1/2 left-12 text-[14px] text-slate-400 !bg-transparent'}
+                              peer-focus:top-[-8px] peer-focus:translate-y-0 peer-focus:left-5 peer-focus:text-[12px] peer-focus:text-indigo-600 peer-focus:!bg-white`}
+                          >
+                            Add Custom Role
+                          </label>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddRole}
+                          disabled={!newRole.trim() || isRegisteringOrg}
+                          className="w-[54px] h-[54px] bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-200 transition-colors disabled:opacity-50"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2 px-1">
+                        <AnimatePresence>
+                          {roRoles.map((role) => (
+                            <motion.div
+                              key={role}
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.8 }}
+                              transition={{ duration: 0.2 }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 text-[13px] font-medium rounded-full border border-indigo-100"
+                            >
+                              {role}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRole(role)}
+                                disabled={isRegisteringOrg}
+                                className="hover:bg-indigo-200 rounded-full p-0.5 transition-colors disabled:opacity-50"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
                     </motion.div>
 
                     <motion.div variants={formItemVariants} className="mt-8 pt-2">
